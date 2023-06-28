@@ -1,0 +1,1 @@
+Using a Mixture of Product Distributions to model bird migratory behavior
