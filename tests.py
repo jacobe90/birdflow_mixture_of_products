@@ -1,5 +1,5 @@
 import unittest
-from mixture_of_products import compute_marginal, softmax
+from mixture_of_products import compute_marginal, sample_route, mixture_of_products_params
 import numpy as np
 
 class TestComputeMarginals(unittest.TestCase):
@@ -21,6 +21,10 @@ class TestComputeMarginals(unittest.TestCase):
         self.assertTrue(np.allclose(marginal_02, true_02))
         self.assertTrue(np.allclose(marginal_013, true_013))
 
+    def test_sample_route(self):
+        params = mixture_of_products_params(10, 7, [10]*7)
+        route = sample_route(params)
+        print(route)
 
 if __name__ == "__main__":
     unittest.main()

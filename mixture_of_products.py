@@ -12,14 +12,17 @@ mixture of products parameters
 array of size locations[t] that parametrizes the weekly marginal of product distribution k for week t] ]}
 """
 def mixture_of_products_params(n, T, locations):
-    params = {'n': n, 'locations': locations, 'weights': np.random.rand(n), 'products': []}
+    params = {'n': n, 'T': T, 'locations': locations, 'weights': np.random.rand(n), 'products': []}
     for k in range(n):
         params['products'].append([np.random.rand(locations[t]) for t in range(T)])
     return params
 
 def softmax(x):
     e_x = np.exp(x - np.max(x))
-    return e_x / e_x.sum(axis=0) # only difference
+    return e_x / e_x.sum(axis=0)
+
+def sample_categorical(weights):
+    return np.where(np.random.multinomial(n=1, pvals=weights) == 1)[0][0]
 
 """
 Compute an arbitrary marginal distribution of the mixture of products
@@ -29,7 +32,7 @@ tsteps: vector of timesteps [t_1, ..., t_j] we wish to compute a marginal for. t
 
 Returns:
 marginal:= a tensor of dimensions params[locations[t_1]...locations[t_j]] that encodes a marginal.
-maringal[l_1, ..., l_j] := p(x_(t_1) = l_1, ..., x_(t_j)=l_j)
+marginal[l_1, ..., l_j] := p(x_(t_1) = l_1, ..., x_(t_j)=l_j)
 """
 def compute_marginal(params, tsteps):
     weights = softmax(params['weights'])
@@ -46,7 +49,14 @@ def compute_marginal(params, tsteps):
 def forecast(params, tsteps, observations):
     pass
 
+
 def sample_route(params):
-    pass
+    weights = softmax(params['weights'])
+    k = sample_categorical(weights)
+    route = []
+    for t in range(params['T']):
+        route.append(sample_categorical(softmax(params['products'][k][t])))
+    return route
+
 def sample_locations_conditional(params, locations_to_sample, observations):
     pass
