@@ -1,5 +1,6 @@
 import unittest
-from mixture_of_products import compute_marginal, sample_route, mixture_of_products_params
+from mixture_of_products import compute_marginal, sample_route, mixture_of_products_params, \
+    sample_locations_conditional, forecast
 import numpy as np
 
 class TestComputeMarginals(unittest.TestCase):
@@ -21,10 +22,16 @@ class TestComputeMarginals(unittest.TestCase):
         self.assertTrue(np.allclose(marginal_02, true_02))
         self.assertTrue(np.allclose(marginal_013, true_013))
 
-    def test_sample_route(self):
-        params = mixture_of_products_params(10, 7, [10]*7)
+    def test_sampling_works(self):
+        params = mixture_of_products_params(10, 7, [100]*7)
         route = sample_route(params)
-        print(route)
+        conditional_route = sample_locations_conditional(params, [0, 2, 3], [(4, 99), (6, 2)])
+        print(route, conditional_route)
+
+    def test_forecasting(self):
+        params = mixture_of_products_params(10, 7, [20] * 7)
+        conditional = forecast(params, [1, 2], [(0, 10)])
+        print(conditional)
 
 if __name__ == "__main__":
     unittest.main()

@@ -45,9 +45,38 @@ def compute_marginal(params, tsteps):
         marginal += weights[k] * prod_k_marginal
     return marginal
 
+"""
+Arguments:
+params: mixture of products parameters
+tsteps: list of timesteps in the conditional distribution
+observations: list of tuples (timestep, observation) to condition on
 
+Returns:
+conditional: the conditional distribution over tsteps conditioned on observations
+"""
 def forecast(params, tsteps, observations):
-    pass
+    # compute weights pi for each of the corresponding conditionals of the product distributions
+    weights = softmax(params['weights'])
+    pi = np.zeros(params['n'])
+    for r in range(params['n']):
+        likelihood_r = 1
+        for (t, obs) in observations:
+            likelihood_r *= softmax(params['products'][r][t])[obs]
+        pi[r] = weights[r] * likelihood_r
+    pi /= pi.sum()  # normalize the weights
+
+    # initialize the final conditional
+    dims = tuple(map(lambda tup: tup[1], filter(lambda tup: tup[0] in tsteps, list(enumerate(params['locations'])))))
+    conditional = np.zeros(dims)
+
+    # compute the final conditional, summing over the conditionals for each product k weighted by pi[k]
+    for k in range(params['n']):
+        prod_k_conditional = np.asarray(1)
+        for tstep in tsteps:
+            prod_k_conditional = np.tensordot(prod_k_conditional, softmax(params['products'][k][tstep]), axes=0)
+        conditional += pi[k] * prod_k_conditional
+
+    return conditional
 
 
 def sample_route(params):
@@ -58,5 +87,26 @@ def sample_route(params):
         route.append(sample_categorical(softmax(params['products'][k][t])))
     return route
 
-def sample_locations_conditional(params, locations_to_sample, observations):
-    pass
+"""
+Arguments:
+params: mixture of products parameters
+timesteps_to_sample: list of timesteps to sample
+observations: list of tuples (timestep, observation) to condition on
+
+Returns:
+conditional_sample: a list where element i is an observation at timesteps_to_sample[i], conditioned on observations
+"""
+def sample_locations_conditional(params, timesteps_to_sample, observations):
+    weights = softmax(params['weights'])
+    pi = np.zeros(params['n'])
+    for r in range(params['n']):
+        likelihood_r = 1
+        for (t, obs) in observations:
+            likelihood_r *= softmax(params['products'][r][t])[obs]
+        pi[r] = weights[r] * likelihood_r
+    pi /= pi.sum() # normalize the weights
+    k = sample_categorical(pi)
+    conditional_sample = []
+    for t in timesteps_to_sample:
+        conditional_sample.append(sample_categorical(softmax(params['products'][k][t])))
+    return conditional_sample
