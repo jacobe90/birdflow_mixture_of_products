@@ -78,7 +78,12 @@ def forecast(params, tsteps, observations):
 
     return conditional
 
-
+"""
+Arguments: 
+params: mixture of products parameters
+Returns
+route: a T-timestep route sampled from the mixture of products model
+"""
 def sample_route(params):
     weights = softmax(params['weights'])
     k = sample_categorical(weights)
