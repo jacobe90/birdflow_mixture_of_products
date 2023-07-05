@@ -24,7 +24,7 @@ class MixtureOfProductsModel(hk.Module):
         super().__init__(name=name)
         self.weeks = weeks
         self.cells = cells
-        self.n = n
+        self.n = n # number of product distributions
         self.products = []
 
     def get_marginal(self, weights, tsteps):
