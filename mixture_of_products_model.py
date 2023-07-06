@@ -51,8 +51,9 @@ class MixtureOfProductsModel(hk.Module):
             self.products.append(Product(self.cells, k))
 
         #TODO: vectorize everything more somehow?
-        single_tstep_marginals = []
-        pairwise_marginals = []
+
+        # single_tstep_marginals = []
+        # pairwise_marginals = []
         # for t in range(self.weeks):
         #     single_tstep_marginal = 0
         #     for k in range(self.n):
@@ -82,3 +83,54 @@ def predict(cells, weeks, n):
 
 
 model_forward = hk.transform(predict)
+
+"""
+Arguments
+mop_params: parameters of a mixture of products model
+tsteps: the weekly random variables in the desired marginal
+
+Returns
+marginal: the desired marginal of the mixture of products
+"""
+def compute_marginal(params, tsteps):
+    weights = softmax(params['MixtureOfProductsModel']['weights'])
+    marginal = 0
+    n_products = len(params.keys()) - 1
+    for k in range(n_products):
+        prod_k_marginal = jnp.asarray(1)
+        for tstep in tsteps:
+            prod_k_marginal = jnp.tensordot(prod_k_marginal, softmax(params[f'MixtureOfProductsModel/Product{k}'][f'week_{tstep}']), axes=0)
+        marginal += weights[k] * prod_k_marginal
+    return marginal
+
+"""
+Arguments:
+params: mixture of products parameters
+tsteps: list of timesteps in the conditional distribution
+observations: list of tuples (timestep, observation) to condition on
+
+Returns:
+conditional: the conditional distribution over tsteps conditioned on observations
+"""
+def forecast(params, tsteps, observations):
+    n_products = len(params.keys()) - 1
+    # compute weights pi for each of the corresponding conditionals of the product distributions
+    weights = softmax(params['MixtureOfProductsModel']['weights'])
+    pi = jnp.zeros(n_products)
+    for r in range(n_products):
+        likelihood_r = 1
+        for (t, obs) in observations:
+            likelihood_r *= softmax(params[f'MixtureOfProductsModel/Product{r}'][f'week_{t}'])[obs]
+        pi = pi.at[r].set(weights[r] * likelihood_r)
+    pi /= pi.sum()  # normalize the weights
+
+    # compute the final conditional, summing over the conditionals for each product k weighted by pi[k]
+    conditional = 0
+    for k in range(n_products):
+        prod_k_conditional = jnp.asarray(1)
+        for tstep in tsteps:
+            prod_k_conditional = jnp.tensordot(prod_k_conditional, softmax(params[f'MixtureOfProductsModel/Product{k}'][f'week_{tstep}']), axes=0)
+        conditional += pi[k] * prod_k_conditional
+
+    return conditional
+
