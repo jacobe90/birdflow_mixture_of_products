@@ -3,10 +3,14 @@ from mixture_of_products_toy_implementation import compute_marginal, sample_rout
     sample_locations_conditional, forecast
 import numpy as np
 from mixture_of_products_model import model_forward
+from mixture_of_products_validation import track_log_likelihood
 import mixture_of_products_model
+from mixture_of_products_model_training import Datatuple, mask_input
 import haiku as hk
 import jax.numpy as jnp
-
+import os
+import h5py
+import pandas as pd
 
 def convert_toy_to_real(params):
     real_params = {}
@@ -18,6 +22,35 @@ def convert_toy_to_real(params):
             real_params[f'MixtureOfProductsModel/Product{k}'][f'week_{i}'] = jnp.asarray(marginal)
     return real_params
 
+class TestValidation(unittest.TestCase):
+    def test_track_log_likelihood_works(self):
+        root = "/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/birdflow_models"
+        species = "amewoo"
+        res = "48"
+        dist_pow = 0.4
+        hdf_src = os.path.join(root, f'{species}_2021_{res}km.hdf5')
+        file = h5py.File(hdf_src, 'r')
+
+        true_densities = np.asarray(file['distr']).T
+
+        weeks = true_densities.shape[0]
+        total_cells = true_densities.shape[1]
+
+        distance_vector = np.asarray(file['distances']) ** dist_pow
+        distance_vector *= 1 / (100 ** dist_pow)
+        masks = np.asarray(file['geom']['dynamic_mask']).T.astype(bool)
+
+        dtuple = Datatuple(weeks, total_cells, distance_vector, masks)
+        distance_matrices, masked_densities = mask_input(true_densities, dtuple)
+        cells = [d.shape[0] for d in masked_densities]
+        key = hk.PRNGSequence(42)
+        params = model_forward.init(next(key), cells, weeks, 10)
+        amewoo_track_df = pd.concat([pd.read_csv(
+            f"/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/birdflow_black_box/tracks/amewoo-Blomberg-track-data-res-{res}km.csv"),
+                                     pd.read_csv(
+                                         f"/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/birdflow_black_box/tracks/amewoo-track-data-res-{res}km.csv")],
+                                    axis=0, ignore_index=True)
+        tll = track_log_likelihood(params, amewoo_track_df)
 
 class TestComputeMarginals(unittest.TestCase):
     def test_compute_marginals_ex_1(self):
