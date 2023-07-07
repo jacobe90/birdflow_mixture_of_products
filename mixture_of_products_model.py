@@ -2,6 +2,8 @@ import haiku as hk
 from jax.nn import softmax
 import jax.numpy as jnp
 from jax.random import categorical
+import jax
+import numpy as np
 
 class Product(hk.Module):
     def __init__(self, cells, idx):
@@ -104,22 +106,41 @@ def compute_marginal(params, tsteps):
     return marginal
 
 """
+Arguments
+params: parameters of a mixture of products model
+observations: a list of tuples (tstep, obs)
+
+Returns
+prob: the probability of the observations w.r.t to the MOP given by params
+"""
+def get_prob(params, observations):
+    weights = softmax(params['MixtureOfProductsModel']['weights'])
+    prob = 0
+    n_products = len(params.keys()) - 1
+    for k in range(n_products):
+        prod_k_prob = 1
+        for tstep, cell in observations:
+            prod_k_prob *= softmax(params[f'MixtureOfProductsModel/Product{k}'][f'week_{tstep}'])[cell]
+        prob += weights[k] * prod_k_prob
+    return prob
+
+"""
 Arguments:
 params: mixture of products parameters
 tsteps: list of timesteps in the conditional distribution
-observations: list of tuples (timestep, observation) to condition on
+conditions: list of tuples (timestep, cell) to condition on
 
 Returns:
 conditional: the conditional distribution over tsteps conditioned on observations
 """
-def forecast(params, tsteps, observations):
+def forecast(params, tsteps, conditions):
     n_products = len(params.keys()) - 1
     # compute weights pi for each of the corresponding conditionals of the product distributions
     weights = softmax(params['MixtureOfProductsModel']['weights'])
     pi = jnp.zeros(n_products)
     for r in range(n_products):
         likelihood_r = 1
-        for (t, obs) in observations:
+        for (t, obs) in conditions:
             likelihood_r *= softmax(params[f'MixtureOfProductsModel/Product{r}'][f'week_{t}'])[obs]
         pi = pi.at[r].set(weights[r] * likelihood_r)
     pi /= pi.sum()  # normalize the weights
@@ -133,4 +154,76 @@ def forecast(params, tsteps, observations):
         conditional += pi[k] * prod_k_conditional
 
     return conditional
+
+"""
+Arguments
+params: parameters of a mixture of products model
+observations: a list of tuples (tstep, obs)
+conditions: a list of tuples (tstep, obs) to condition on
+
+Returns
+conditional_prob: the probability of the observations given the conditions w.r.t to the MOP given by params
+"""
+def get_forecast_prob(params, observations, conditions):
+    n_products = len(params.keys()) - 1
+    # compute weights pi for each of the corresponding conditionals of the product distributions
+    weights = softmax(params['MixtureOfProductsModel']['weights'])
+    pi = jnp.zeros(n_products)
+    for r in range(n_products):
+        likelihood_r = 1
+        for (t, obs) in conditions:
+            likelihood_r *= softmax(params[f'MixtureOfProductsModel/Product{r}'][f'week_{t}'])[obs]
+        pi = pi.at[r].set(weights[r] * likelihood_r)
+    pi /= pi.sum()  # normalize the weights
+
+    # compute the final conditional, summing over the conditionals for each product k weighted by pi[k]
+    conditional_prob = 0
+    for k in range(n_products):
+        prod_k_conditional_prob = jnp.asarray(1)
+        for tstep, cell in observations:
+            prod_k_conditional_prob *= softmax(params[f'MixtureOfProductsModel/Product{k}'][f'week_{tstep}'])[cell]
+        conditional_prob += pi[k] * prod_k_conditional_prob
+
+    return conditional_prob
+"""
+Arguments: 
+params: mixture of products parameters
+Returns
+route: a T-timestep route sampled from the mixture of products model
+"""
+def sample_route(params):
+    weight_logits = jnp.asarray(params['MixtureOfProductsModel']['weights'], dtype=float)
+    key = hk.PRNGSequence(np.random.randint(100))
+    k = categorical(next(key), weight_logits)
+    route = []
+    T = len(params['MixtureOfProductsModel/Product0'].keys())
+    for t in range(T):
+        route.append(categorical(next(key), params[f'MixtureOfProductsModel/Product{k}'][f'week_{t}']))
+    return route
+
+"""
+Arguments:
+params: mixture of products parameters
+timesteps_to_sample: list of timesteps to sample
+observations: list of tuples (timestep, observation) to condition on
+
+Returns:
+conditional_sample: a list where element i is an observation at timesteps_to_sample[i], conditioned on observations
+"""
+def sample_locations_conditional(params, timesteps_to_sample, observations):
+    weights = softmax(params['MixtureOfProductsModel']['weights'])
+    n_products = len(params.keys()) - 1
+    pi = jnp.zeros(n_products)
+    for r in range(n_products):
+        likelihood_r = 1
+        for (t, obs) in observations:
+            likelihood_r *= softmax(params[f'MixtureOfProductsModel/Product{r}'][f'week_{t}'])[obs]
+        pi[r] = weights[r] * likelihood_r
+    pi /= pi.sum() # normalize the weights
+    key = hk.PRNGSequence(np.random.randint(100))
+    k = categorical(next(key), jnp.log(pi))
+    conditional_sample = []
+    for t in timesteps_to_sample:
+        conditional_sample.append(categorical(next(key), params[f'MixtureOfProductsModel/Product{k}'][f'week_{t}']))
+    return conditional_sample
 
