@@ -11,6 +11,7 @@ import jax.numpy as jnp
 import os
 import h5py
 import pandas as pd
+import math
 
 def convert_toy_to_real(params):
     real_params = {}
@@ -23,7 +24,7 @@ def convert_toy_to_real(params):
     return real_params
 
 class TestValidation(unittest.TestCase):
-    def test_track_log_likelihood_works(self):
+    def test_track_log_likelihood_runs(self):
         root = "/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/birdflow_models"
         species = "amewoo"
         res = "48"
@@ -51,6 +52,22 @@ class TestValidation(unittest.TestCase):
                                          f"/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/birdflow_black_box/tracks/amewoo-track-data-res-{res}km.csv")],
                                     axis=0, ignore_index=True)
         tll = track_log_likelihood(params, amewoo_track_df)
+    def test_track_log_likelihood_is_correct(self):
+        toy_params = {'n': 3, 'locations': [2, 2, 3, 3], 'weights': np.log([0.2, 0.2, 0.6]), 'products': [
+            [np.log([0.2, 0.8]), np.log([0.5, 0.5]), np.log([0.1, 0.1, 0.8]), np.log([0.1, 0.2, 0.7])],
+            [np.log([0.2, 0.8]), np.log([0.5, 0.5]), np.log([0.1, 0.1, 0.8]), np.log([0.1, 0.2, 0.7])],
+            [np.log([0.2, 0.8]), np.log([0.5, 0.5]), np.log([0.1, 0.1, 0.8]), np.log([0.1, 0.2, 0.7])]]}
+        params = convert_toy_to_real(toy_params)
+
+        track = {(0, 1), (1, 1), (2, 2)}
+        track_df = {'cell.1': [1, 2], 'cell.2': [2, 3], 'st_week.1': [0, 1], 'st_week.2': [1, 2]}
+        track_df = pd.DataFrame(data=track_df)
+        tll_1 = track_log_likelihood(params, track_df)
+        tll_2 = 0.5 * (math.log(mixture_of_products_model.get_forecast_prob(params, [(1, 1)], [(0, 1)])) + math.log(mixture_of_products_model.get_forecast_prob(params, [(2, 2)], [(1, 1)])))
+        tll_3 = 0.5 * (math.log(forecast(toy_params, [1], [(0, 1)])[1]) + math.log(forecast(toy_params, [2], [(1, 1)])[2]))
+        print(tll_1, tll_2, tll_3)
+        self.assertTrue(np.allclose(tll_1, tll_2))
+        self.assertTrue(np.allclose(tll_1, tll_3))
 
 class TestSampling(unittest.TestCase):
     def test_sample_route_works(self):
