@@ -21,7 +21,7 @@ def track_log_likelihood(params, track_df):
         # count += 1
         try:
             transition_prob = get_forecast_prob(params, [(int(track_df['st_week.2'][i]), int(track_df['cell.2'][i]))], [(int(track_df['st_week.1'][i]), int(track_df['cell.1'][i]))])
-            total += transition_prob
+            total += math.log(transition_prob)
             count += 1
         except ValueError:
             print("ran into a nan.")

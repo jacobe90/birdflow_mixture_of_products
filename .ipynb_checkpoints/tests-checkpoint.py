@@ -99,6 +99,28 @@ class TestComputeMarginals(unittest.TestCase):
         for t in range(4):
             for x in range(10):
                 self.assertTrue(np.allclose(forecast(toy_params, [t+1], [(t, x)]), mixture_of_products_model.forecast(params, [t+1], [(t, x)])))
+    
+    def test_compute_marginal_prob(self):
+        toy_params = {'n': 2, 'locations': [3, 3, 3], 'weights': [1, 1], 'products': np.log(
+            [[[0.2, 0.2, 0.6], [0.1, 0.5, 0.4], [0.6, 0.1, 0.3]], [[0.1, 0.1, 0.8], [0.7, 0.2, 0.1], [0.4, 0.2, 0.4]]])}
+        params = convert_toy_to_real(toy_params)
+        for t_1 in range(2):
+            for t_2 in range(t_1+1, 2):
+                marginal = mixture_of_products_model.compute_marginal(params, [t_1, t_2])
+                for i in range(3):
+                    for j in range(3):
+                        self.assertTrue(np.allclose(marginal[i][j], mixture_of_products_model.get_prob(params, [(t_1, i), (t_2, j)])))
+    
+    def test_compute_conditional_prob(self):
+        toy_params = {'n': 2, 'locations': [3, 3, 3], 'weights': [1, 1], 'products': np.log(
+            [[[0.2, 0.2, 0.6], [0.1, 0.5, 0.4], [0.6, 0.1, 0.3]], [[0.1, 0.1, 0.8], [0.7, 0.2, 0.1], [0.4, 0.2, 0.4]]])}
+        params = convert_toy_to_real(toy_params)
+        for t_1 in range(3):
+            for t_2 in range(t_1+1, 3):
+                for i in range(3):
+                    conditional = mixture_of_products_model.forecast(params, [t_2], [(t_1, i)])
+                    for j in range(3):
+                        self.assertTrue(np.allclose(conditional[j], mixture_of_products_model.get_forecast_prob(params, [(t_2, j)], [(t_1, i)])))
 
 class TestModelInternalComputeMarginals(unittest.TestCase):
     def test_model_internal_compute_marginals_ex_1(self):
