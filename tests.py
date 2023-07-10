@@ -3,7 +3,7 @@ from mixture_of_products_toy_implementation import compute_marginal, sample_rout
     sample_locations_conditional, forecast
 import numpy as np
 from mixture_of_products_model import model_forward
-from mixture_of_products_validation import track_log_likelihood
+from mixture_of_products_validation import track_log_likelihood, to_dynamic_conversion_dict
 import mixture_of_products_model
 from mixture_of_products_model_training import Datatuple, mask_input
 import haiku as hk
@@ -25,11 +25,8 @@ def convert_toy_to_real(params):
 
 class TestValidation(unittest.TestCase):
     def test_track_log_likelihood_runs(self):
-        root = "/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/birdflow_models"
-        species = "amewoo"
-        res = "48"
+        hdf_src = "/Users/jacobepstein/Documents/work/BirdFlowModels/amewoo_2021_48km.hdf5"
         dist_pow = 0.4
-        hdf_src = os.path.join(root, f'{species}_2021_{res}km.hdf5')
         file = h5py.File(hdf_src, 'r')
 
         true_densities = np.asarray(file['distr']).T
@@ -46,23 +43,29 @@ class TestValidation(unittest.TestCase):
         cells = [d.shape[0] for d in masked_densities]
         key = hk.PRNGSequence(42)
         params = model_forward.init(next(key), cells, weeks, 10)
+        # amewoo_track_df = pd.concat([pd.read_csv(
+        #     f"/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/birdflow_black_box/tracks/amewoo-Blomberg-track-data-res-{res}km.csv"),
+        #                              pd.read_csv(
+        #                                  f"/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/birdflow_black_box/tracks/amewoo-track-data-res-{res}km.csv")],
+        #                             axis=0, ignore_index=True)
         amewoo_track_df = pd.concat([pd.read_csv(
-            f"/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/birdflow_black_box/tracks/amewoo-Blomberg-track-data-res-{res}km.csv"),
-                                     pd.read_csv(
-                                         f"/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/birdflow_black_box/tracks/amewoo-track-data-res-{res}km.csv")],
-                                    axis=0, ignore_index=True)
-        tll = track_log_likelihood(params, amewoo_track_df)
+            f"/Users/jacobepstein/Documents/work/birdflow_black_box/tracks/amewoo-Blomberg-track-data-res-48km.csv"),
+            pd.read_csv(
+                f"/Users/jacobepstein/Documents/work/birdflow_black_box/tracks/amewoo-track-data-res-48km.csv")],
+            axis=0, ignore_index=True)
+        tll = track_log_likelihood(params, amewoo_track_df, masks)
+        print(tll)
     def test_track_log_likelihood_is_correct(self):
         toy_params = {'n': 3, 'locations': [2, 2, 3, 3], 'weights': np.log([0.2, 0.2, 0.6]), 'products': [
             [np.log([0.2, 0.8]), np.log([0.5, 0.5]), np.log([0.1, 0.1, 0.8]), np.log([0.1, 0.2, 0.7])],
             [np.log([0.2, 0.8]), np.log([0.5, 0.5]), np.log([0.1, 0.1, 0.8]), np.log([0.1, 0.2, 0.7])],
             [np.log([0.2, 0.8]), np.log([0.5, 0.5]), np.log([0.1, 0.1, 0.8]), np.log([0.1, 0.2, 0.7])]]}
         params = convert_toy_to_real(toy_params)
-
-        track = {(0, 1), (1, 1), (2, 2)}
-        track_df = {'cell.1': [1, 2], 'cell.2': [2, 3], 'st_week.1': [0, 1], 'st_week.2': [1, 2]}
+        masks = [[True, False, True, False], [False, True, True, False], [True, True, False, True], [False, True, True, True]]
+        conversion_dict = to_dynamic_conversion_dict(masks)
+        track_df = {'cell.1': [2, 2], 'cell.2': [2, 3], 'st_week.1': [0, 1], 'st_week.2': [1, 2]}
         track_df = pd.DataFrame(data=track_df)
-        tll_1 = track_log_likelihood(params, track_df)
+        tll_1 = track_log_likelihood(params, track_df, conversion_dict)
         tll_2 = 0.5 * (math.log(mixture_of_products_model.get_forecast_prob(params, [(1, 1)], [(0, 1)])) + math.log(mixture_of_products_model.get_forecast_prob(params, [(2, 2)], [(1, 1)])))
         tll_3 = 0.5 * (math.log(forecast(toy_params, [1], [(0, 1)])[1]) + math.log(forecast(toy_params, [2], [(1, 1)])[2]))
         print(tll_1, tll_2, tll_3)
