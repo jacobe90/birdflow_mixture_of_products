@@ -72,6 +72,28 @@ class TestValidation(unittest.TestCase):
         self.assertTrue(np.allclose(tll_1, tll_2))
         self.assertTrue(np.allclose(tll_1, tll_3))
 
+    def test_track_log_likelihood_is_correct_ex_2(self):
+        toy_params = {'n': 4, 'T': 5, 'locations': [2, 2, 2, 2, 2], 'weights': [0.1, 0.2, 0.3, 0.4],
+                      'products': np.random.rand(4, 5, 2)}
+        params = convert_toy_to_real(toy_params)
+        track_df = {'cell.1': [4, 3, 3, 4], 'cell.2': [3, 3, 4, 4], 'st_week.1': [0, 1, 2, 3], 'st_week.2': [1, 2, 3, 4]}
+        track_df = pd.DataFrame(data=track_df)
+        masks = [[False, False, False, True, True],[False, False, False, True, True],[False, False, False, True, True],[False, False, False, True, True],[False, False, False, True, True]]
+        conversion_dict = to_dynamic_conversion_dict(masks)
+        print(conversion_dict)
+        tll_1 = track_log_likelihood(params, track_df, conversion_dict)
+        tll_2 = 0
+        for i in range(len(track_df)):
+            observations = [(int(track_df['st_week.2'][i]), conversion_dict[int(track_df['st_week.2'][i])][int(track_df['cell.2'][i])])]
+            conditions = [(int(track_df['st_week.1'][i]), conversion_dict[int(track_df['st_week.1'][i])][int(track_df['cell.1'][i])])]
+            tll_2 += 0.25 * math.log(mixture_of_products_model.get_forecast_prob(params, observations, conditions))
+        print(tll_1, tll_2)
+        forecast_probs = [forecast(toy_params, [1], [(0, 1)])[0], forecast(toy_params, [2], [(1, 0)])[0], forecast(toy_params, [3], [(2, 0)])[1], forecast(toy_params, [4], [(3, 1)])[1]]
+        tll_3 = 0.25 * sum(list(map(math.log, forecast_probs)))
+        print(tll_3)
+        self.assertTrue(np.allclose(tll_1, tll_2))
+        self.assertTrue(np.allclose(tll_1, tll_3))
+
 class TestSampling(unittest.TestCase):
     def test_sample_route_works(self):
         toy_params = {'n': 2, 'locations': [3, 3, 3], 'weights': [1, 1], 'products': np.log(
