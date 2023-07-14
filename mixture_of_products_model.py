@@ -22,13 +22,13 @@ class Product(hk.Module):
 
 
 class MixtureOfProductsModel(hk.Module):
-    def __init__(self, cells, weeks, n, name="MixtureOfProductsModel"):
+    def __init__(self, cells, weeks, n, name="MixtureOfProductsModel", learn_weights=True):
         super().__init__(name=name)
         self.weeks = weeks
         self.cells = cells
         self.n = n # number of product distributions
         self.products = []
-
+        self.learn_weights = learn_weights
     def get_marginal(self, weights, tsteps):
         marginal = 0
         for k in range(self.n):
@@ -39,13 +39,17 @@ class MixtureOfProductsModel(hk.Module):
         return marginal
 
     def __call__(self):
-        # initialize weights
-        weights = hk.get_parameter(
-            'weights',
-            (self.n,),
-            init=hk.initializers.RandomNormal(),
-            dtype='float32'
-        )
+        if self.learn_weights:
+            # initialize weights
+            weights = hk.get_parameter(
+                'weights',
+                (self.n,),
+                init=hk.initializers.RandomNormal(),
+                dtype='float32'
+            )
+        else:
+            # fix all weights to be equal
+            weights = jnp.zeros(self.n)
         weights = softmax(weights, axis=0)
 
         # initialize product distributions
@@ -79,8 +83,8 @@ class MixtureOfProductsModel(hk.Module):
         return single_tstep_marginals, pairwise_marginals
 
 
-def predict(cells, weeks, n):
-    model = MixtureOfProductsModel(cells, weeks, n)
+def predict(cells, weeks, n, learn_weights=True):
+    model = MixtureOfProductsModel(cells, weeks, n, learn_weights=learn_weights)
     return model()
 
 
