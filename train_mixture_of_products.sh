@@ -1,13 +1,13 @@
 #!/bin/bash
 #SBATCH -c 2
 #SBATCH --mem=12GB
-#SBATCH -p gypsum-titanx
+#SBATCH -p gypsum-1080ti
 #SBATCH -G 1
 #SBATCH -t 1:00:00
 #SBATCH -o slurm-%x.%j.out
 
 FIX='false'
-while getopts :e:d:p:n:s:r:o:d:k:f flag
+while getopts :e:d:p:n:s:r:o:i:k:f flag
 do
     case "${flag}" in
         e) ENTWEIGHT=${OPTARG};;
@@ -17,7 +17,7 @@ do
         s) SPECIES=${OPTARG};;
         r) RES=${OPTARG};;
         o) ROOT=${OPTARG};;
-        d) SAVEDIR=${OPTARG};;
+        i) SAVEDIR=${OPTARG};;
         k) KEYSEED=${OPTARG};;
         f) FIX='true';;
         *) echo "invalid command: no parameter included with argument $OPTARG";;
