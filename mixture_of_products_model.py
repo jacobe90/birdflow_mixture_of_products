@@ -31,19 +31,18 @@ class MixtureOfProductsModel(hk.Module):
         self.products = []
         self.learn_weights = learn_weights
 
-    def get_prod_k_marginal(self, k, components, tsteps):
+    def get_prod_k_marginal(self, k, components):
         prod_k_marginal = jnp.asarray(1)
-        for tstep in tsteps:
-            prod_k_marginal = jnp.tensordot(prod_k_marginal, components[tstep][k], axes=0)  # indexing with k should be ok now?
+        for idx in range(len(components)):
+            prod_k_marginal = jnp.tensordot(prod_k_marginal, components[idx][k], axes=0)  # indexing with k should be ok now?
         return prod_k_marginal
 
-    def get_marginal(self, weights, components, tsteps):
-        vectorized_get_prod_k_marginal = hk.vmap(self.get_prod_k_marginal, split_rng=False, in_axes=(0, None, None))
+    def get_marginal(self, weights, tsteps):
+        components = [softmax(hk.get_parameter(f'week_{t}', (self.n, self.cells[t]), init=hk.initializers.RandomNormal(), dtype='float32')) for t in tsteps]
+        vectorized_get_prod_k_marginal = hk.vmap(self.get_prod_k_marginal, split_rng=False, in_axes=(0, None))
         ks = jnp.arange(self.n)
-        marginals = vectorized_get_prod_k_marginal(ks, components, tsteps)
-        shape = [1 for d in range(len(tsteps) + 1)]
-        shape[0] = len(weights)
-        shape = tuple(shape)
+        marginals = vectorized_get_prod_k_marginal(ks, components)
+        shape = tuple([len(weights)] + [1 for d in range(len(tsteps))])
         marginals *= jnp.array([weights]).reshape(shape)
         marginals = marginals.sum(axis=0)
         return marginals
@@ -69,8 +68,8 @@ class MixtureOfProductsModel(hk.Module):
                              dtype='float32')) for t in range(self.weeks)]
 
         # TODO: see if we can vmap this as well? (don't think we can)
-        single_tstep_marginals = [self.get_marginal(weights, components, [t]) for t in range(self.weeks)]
-        pairwise_marginals = [self.get_marginal(weights, components, [t, t + 1]) for t in range(self.weeks - 1)]
+        single_tstep_marginals = [self.get_marginal(weights, [t]) for t in range(self.weeks)]
+        pairwise_marginals = [self.get_marginal(weights, [t, t + 1]) for t in range(self.weeks - 1)]
         return single_tstep_marginals, pairwise_marginals
 
 
