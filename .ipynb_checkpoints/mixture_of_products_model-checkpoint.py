@@ -22,30 +22,47 @@ class Product(hk.Module):
 
 
 class MixtureOfProductsModel(hk.Module):
-    def __init__(self, cells, weeks, n, name="MixtureOfProductsModel"):
+    def __init__(self, cells, weeks, n, name="MixtureOfProductsModel", learn_weights=True):
         super().__init__(name=name)
         self.weeks = weeks
         self.cells = cells
         self.n = n # number of product distributions
         self.products = []
-
+        self.learn_weights = learn_weights
+    
+    def get_prod_k_marginal(self, k, tsteps): 
+        prod_k_marginal = jnp.asarray(1)
+        for tstep in tsteps:
+            prod_k_marginal = jnp.tensordot(prod_k_marginal, self.products[k](tstep), axes=0)
+        return prod_k_marginal
+    
     def get_marginal(self, weights, tsteps):
         marginal = 0
-        for k in range(self.n):
-            prod_k_marginal = jnp.asarray(1)
-            for tstep in tsteps:
-                prod_k_marginal = jnp.tensordot(prod_k_marginal, self.products[k](tstep), axes=0)
-            marginal += weights[k] * prod_k_marginal
-        return marginal
+        vectorized_get_prod_k_marginal = hk.vmap(self.get_prod_k_marginal)
+        k_v = jnp.array([jnp.arange(self.n)]).T
+        tsteps_v = jnp.array([tsteps] * self.n)
+        marginals = vectorized_get_prod_k_marginal(k_v, tsteps_v) * jnp.array([weights]).T
+        return marginals.sum(axis=0)
+        
+#         for k in range(self.n):
+#             prod_k_marginal = jnp.asarray(1)
+#             for tstep in tsteps:
+#                 prod_k_marginal = jnp.tensordot(prod_k_marginal, self.products[k](tstep), axes=0)
+#             marginal += weights[k] * prod_k_marginal
+        #return marginal
 
     def __call__(self):
-        # initialize weights
-        weights = hk.get_parameter(
-            'weights',
-            (self.n,),
-            init=hk.initializers.RandomNormal(),
-            dtype='float32'
-        )
+        if self.learn_weights:
+            # initialize weights
+            weights = hk.get_parameter(
+                'weights',
+                (self.n,),
+                init=hk.initializers.RandomNormal(),
+                dtype='float32'
+            )
+        else:
+            # fix all weights to be equal
+            weights = jnp.zeros(self.n)
         weights = softmax(weights, axis=0)
 
         # initialize product distributions
@@ -79,8 +96,8 @@ class MixtureOfProductsModel(hk.Module):
         return single_tstep_marginals, pairwise_marginals
 
 
-def predict(cells, weeks, n):
-    model = MixtureOfProductsModel(cells, weeks, n)
+def predict(cells, weeks, n, learn_weights=True):
+    model = MixtureOfProductsModel(cells, weeks, n, learn_weights=learn_weights)
     return model()
 
 

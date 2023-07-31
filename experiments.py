@@ -67,7 +67,7 @@ def markov_chain_baseline(ent_weight, dist_weight, dist_pow, save_dir=None):
     os.system(f"sbatch {job_file} -e {ent_weight} -d {dist_weight} -p {dist_pow} -s amewoo -r 48 -o {root_dir} -i {save_dir}")
 
 if __name__=="__main__":
-    #mixture_of_products_grid_search([1e-4], [1e-2], [0.4], [6, 8, 10, 12, 14, 16, 18, 20], save_dir="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/number_of_components_1d_grid_search")
+    mixture_of_products_grid_search([1e-4], [1e-2], [0.4], [25], save_dir="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/number_of_components_1d_grid_search")
     #markov_chain_baseline(1e-4, 1e-2, 0.4, save_dir="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/markov_chain_baselines")
     #train_with_equally_weighted_components(1e-4, 1e-2, 0.4, 10, save_dir="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/fix_weights_of_components")
-    training_variability(1e-4, 1e-2, 0.4, 10, 40, save_dir="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/training_variability_10_components", group_size=8)
+    #training_variability(1e-4, 1e-2, 0.4, 10, 40, save_dir="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/training_variability_10_components", group_size=8)

@@ -29,14 +29,27 @@ class MixtureOfProductsModel(hk.Module):
         self.n = n # number of product distributions
         self.products = []
         self.learn_weights = learn_weights
+    
+    def get_prod_k_marginal(self, k, tsteps): 
+        prod_k_marginal = jnp.asarray(1)
+        for tstep in tsteps:
+            prod_k_marginal = jnp.tensordot(prod_k_marginal, self.products[k](tstep), axes=0)
+        return prod_k_marginal
+    
     def get_marginal(self, weights, tsteps):
         marginal = 0
-        for k in range(self.n):
-            prod_k_marginal = jnp.asarray(1)
-            for tstep in tsteps:
-                prod_k_marginal = jnp.tensordot(prod_k_marginal, self.products[k](tstep), axes=0)
-            marginal += weights[k] * prod_k_marginal
-        return marginal
+        vectorized_get_prod_k_marginal = hk.vmap(self.get_prod_k_marginal)
+        k_v = jnp.array([jnp.arange(self.n)]).T
+        tsteps_v = jnp.array([tsteps] * self.n)
+        marginals = vectorized_get_prod_k_marginal(k_v, tsteps_v) * jnp.array([weights]).T
+        return marginals.sum(axis=0)
+        
+#         for k in range(self.n):
+#             prod_k_marginal = jnp.asarray(1)
+#             for tstep in tsteps:
+#                 prod_k_marginal = jnp.tensordot(prod_k_marginal, self.products[k](tstep), axes=0)
+#             marginal += weights[k] * prod_k_marginal
+        #return marginal
 
     def __call__(self):
         if self.learn_weights:
