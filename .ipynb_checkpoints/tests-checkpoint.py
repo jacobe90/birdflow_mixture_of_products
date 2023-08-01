@@ -16,11 +16,8 @@ import math
 def convert_toy_to_real(params):
     real_params = {}
     real_params['MixtureOfProductsModel'] = {'weights': jnp.asarray(params['weights'])}
-    for k in range(len(params['products'])):
-        product_k = params['products'][k]
-        real_params[f'MixtureOfProductsModel/Product{k}'] = {}
-        for i, marginal in enumerate(product_k):
-            real_params[f'MixtureOfProductsModel/Product{k}'][f'week_{i}'] = jnp.asarray(marginal)
+    for t in range(len(params['locations'])):
+        real_params['MixtureOfProductsModel'][f'week_{t}'] = jnp.asarray([params['products'][k][t] for k in range(params['n'])])
     return real_params
 
 class TestValidation(unittest.TestCase):
@@ -106,6 +103,9 @@ class TestComputeMarginals(unittest.TestCase):
         toy_params = {'n': 2, 'locations': [3, 3, 3], 'weights': [1, 1], 'products': np.log(
             [[[0.2, 0.2, 0.6], [0.1, 0.5, 0.4], [0.6, 0.1, 0.3]], [[0.1, 0.1, 0.8], [0.7, 0.2, 0.1], [0.4, 0.2, 0.4]]])}
         params = convert_toy_to_real(toy_params)
+        # print(params)
+        # print(mixture_of_products_model.compute_marginal(params, [0]))
+        # print(compute_marginal(toy_params, [0]))
         for t in range(2):
             self.assertTrue(jnp.allclose(mixture_of_products_model.compute_marginal(params, [t]), compute_marginal(toy_params, [t])))
         for t_1 in range(2):
@@ -165,12 +165,16 @@ class TestComputeMarginals(unittest.TestCase):
                         self.assertTrue(np.allclose(conditional[j], mixture_of_products_model.get_forecast_prob(params, [(t_2, j)], [(t_1, i)])))
 
 class TestModelInternalComputeMarginals(unittest.TestCase):
+    def test_model_forward(self):
+        key = hk.PRNGSequence(42)
+        params = model_forward.init(next(key), [10, 10, 10], 3, 10, learn_weights=True)
+        weekly, pairwise = model_forward.apply(params, None, [10, 10, 10], 3, 10)
+
     def test_model_internal_compute_marginals_ex_1(self):
         key = hk.PRNGSequence(42)
-        params = {'MixtureOfProductsModel': {'weights': jnp.asarray([1, 1])}, 'MixtureOfProductsModel/Product0': {'week_0': jnp.log(jnp.asarray([0.2 , 0.2,  0.6])), 'week_1': jnp.log(jnp.asarray([0.1 , 0.5,  0.4])), 'week_2': jnp.log(jnp.asarray([0.6 , 0.1,  0.3]))}, 'MixtureOfProductsModel/Product1': {'week_0': jnp.log(jnp.asarray([0.1 , 0.1,  0.8])), 'week_1': jnp.log(jnp.asarray([0.7 , 0.2,  0.1])), 'week_2': jnp.log(jnp.asarray([0.4 , 0.2,  0.4]))}}
         toy_params = {'n': 2, 'locations': [3, 3, 3], 'weights': [1, 1], 'products': np.log([[[0.2, 0.2, 0.6], [0.1, 0.5, 0.4], [0.6, 0.1, 0.3]], [[0.1, 0.1, 0.8], [0.7, 0.2, 0.1], [0.4, 0.2, 0.4]]])}
+        params = convert_toy_to_real(toy_params)
         weekly, pairwise = model_forward.apply(params, None, [3, 3, 3], 3, 2)
-
         for i, marginal in enumerate(weekly):
             self.assertTrue(jnp.allclose(marginal, compute_marginal(toy_params, [i])))
         for i, marginal in enumerate(pairwise):

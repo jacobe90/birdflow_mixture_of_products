@@ -5,23 +5,6 @@ from jax.random import categorical
 import jax
 import numpy as np
 
-
-class Product(hk.Module):
-    def __init__(self, cells, idx):
-        super().__init__()
-        self.cells = cells
-
-    def __call__(self, t):
-        weekly_marginal = hk.get_parameter(
-            f'week_{t}',
-            (self.cells[t],),
-            init=hk.initializers.RandomNormal(),
-            dtype='float32'
-        )
-
-        return softmax(weekly_marginal, axis=0)
-
-
 class MixtureOfProductsModel(hk.Module):
     def __init__(self, cells, weeks, n, name="MixtureOfProductsModel", learn_weights=True):
         super().__init__(name=name)
@@ -30,22 +13,35 @@ class MixtureOfProductsModel(hk.Module):
         self.n = n  # number of product distributions
         self.products = []
         self.learn_weights = learn_weights
-
-    def get_prod_k_marginal(self, k, components):
+        self.vectorized_get_prod_k_marginal = hk.vmap(self.get_prod_k_marginal, split_rng=False, in_axes=(0, None, 0))
+        self.batch_size = 2
+        self.batched_get_marginals = hk.vmap(self.marginal_batch, split_rng=False, in_axes=(0, None, 0))
+    
+    def get_prod_k_marginal(self, k, components, weight):
         prod_k_marginal = jnp.asarray(1)
+        # note idx is kind of a week
         for idx in range(len(components)):
-            prod_k_marginal = jnp.tensordot(prod_k_marginal, components[idx][k], axes=0)  # indexing with k should be ok now?
-        return prod_k_marginal
-
+            prod_k_marginal = jnp.tensordot(prod_k_marginal, components[idx][k], axes=0)
+        return weight * prod_k_marginal
+    
+    def marginal_batch(self, weights, components, ks):
+        marginal = self.vectorized_get_prod_k_marginal(ks, components, weights).sum(axis=0)
+        return marginal
+    
     def get_marginal(self, weights, tsteps):
         components = [softmax(hk.get_parameter(f'week_{t}', (self.n, self.cells[t]), init=hk.initializers.RandomNormal(), dtype='float32')) for t in tsteps]
-        vectorized_get_prod_k_marginal = hk.vmap(self.get_prod_k_marginal, split_rng=False, in_axes=(0, None))
         ks = jnp.arange(self.n)
-        marginals = vectorized_get_prod_k_marginal(ks, components)
-        shape = tuple([len(weights)] + [1 for d in range(len(tsteps))])
-        marginals *= jnp.array([weights]).reshape(shape)
-        marginals = marginals.sum(axis=0)
-        return marginals
+        batched_ks = ks[:self.batch_size*int(self.n/self.batch_size)].reshape(int(self.n/self.batch_size), self.batch_size)
+        batched_weights = weights[:self.batch_size*int(self.n/self.batch_size)].reshape(int(self.n/self.batch_size), self.batch_size)
+        # print(batched_weights)
+        # print(batched_ks)
+        # compute weighted marginals of components in batches of 150
+        marginal = self.batched_get_marginals(batched_weights, components, batched_ks).sum(axis=0)
+        # compute marginals of any remaining components
+        if self.n % self.batch_size != 0:
+            marginal += self.vectorized_get_prod_k_marginal(ks[-1 * (self.n%self.batch_size):], components, weights[-1 * (self.n%self.batch_size):]).sum(axis=0)
+        
+        return marginal
 
     def __call__(self):
         if self.learn_weights:
@@ -60,13 +56,6 @@ class MixtureOfProductsModel(hk.Module):
             # fix all weights to be equal
             weights = jnp.zeros(self.n)
         weights = softmax(weights, axis=0)
-
-        # idea: list of T jnp.arrays of dimension n x cells[t]
-        # compute weekly / pairwise marginals from this list
-        components = [softmax(
-            hk.get_parameter(f'week_{t}', (self.n, self.cells[t]), init=hk.initializers.RandomNormal(),
-                             dtype='float32')) for t in range(self.weeks)]
-
         # TODO: see if we can vmap this as well? (don't think we can)
         single_tstep_marginals = [self.get_marginal(weights, [t]) for t in range(self.weeks)]
         pairwise_marginals = [self.get_marginal(weights, [t, t + 1]) for t in range(self.weeks - 1)]

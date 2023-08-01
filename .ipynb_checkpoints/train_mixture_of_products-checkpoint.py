@@ -14,6 +14,7 @@ print = partial(print, flush=True)
 
 parser = argparse.ArgumentParser(description='Run an amewoo model')
 parser.add_argument('root', type=str, help='hdf root directory')
+parser.add_argument('save_dir', type=str, help='directory to save model params and losses')
 parser.add_argument('species', type=str, help='species name')
 parser.add_argument('resolution', type=int, help='model resolution')
 parser.add_argument('--obs_weight', help='Weight on the observation term of the loss', default=1.0, type=float)
@@ -24,8 +25,8 @@ parser.add_argument("--dont_normalize", action="store_true", help="don't normali
 parser.add_argument('--learning_rate', help='Learning rate for Adam optimizer', default=0.1, type=float)
 parser.add_argument('--training_steps', help='The number of training iterations', default=600, type=int)
 parser.add_argument('--rng_seed', help='Random number generator seed', default=17, type=int)
-parser.add_argument('--save_pkl', help='Save parameters as pickle file', action='store_true')
-parser.add_argument('--num_products', help='Number of Product Distributions in the Mixture', default=10, type=int)
+parser.add_argument('--num_components', help='Number of mixture components', default=10, type=int)
+parser.add_argument('--fix_weights', action="store_true", help="Don't learn the weights, rather, fix them to be equal")
 args = parser.parse_args()
 
 print(str(args))
@@ -59,7 +60,8 @@ loss_fn = jit(partial(loss_fn,
                       obs_weight=args.obs_weight,
                       dist_weight=args.dist_weight,
                       ent_weight=args.ent_weight,
-                      num_products=args.num_products))
+                      num_products=args.num_components,
+                      learn_weights=not args.fix_weights))
 
 # Run Training and get params and losses
 params, loss_dict = train_model(loss_fn,
@@ -68,10 +70,14 @@ params, loss_dict = train_model(loss_fn,
                                 cells,
                                 dtuple.weeks,
                                 key,
-                                num_products=args.num_products)
+                                num_products=args.num_components,
+                                learn_weights=not args.fix_weights)
 
-with open(os.path.join(args.root, f'{args.species}_mop_params_{args.resolution}_obs{args.obs_weight}_ent{args.ent_weight}_dist{args.dist_weight}_pow{args.dist_pow}.pkl'), 'wb') as fout:
+# save everything to a file in save_dir
+metadata = f'{args.species}_{args.resolution}km_obs{args.obs_weight}_ent{args.ent_weight}_dist{args.dist_weight}_pow{args.dist_pow}_n{args.num_components}_key{args.rng_seed}'
+if args.fix_weights:
+    metadata += "_fixed_weights"
+with open(os.path.join(args.save_dir, f'mop_params_{metadata}.pkl'), 'wb') as fout:
     pickle.dump(params, fout)
-
-with open(os.path.join(args.root, f'{args.species}_mop_losses_{args.resolution}_obs{args.obs_weight}_ent{args.ent_weight}_dist{args.dist_weight}_pow{args.dist_pow}.pkl'), 'wb') as fout:
+with open(os.path.join(args.save_dir, f'mop_losses_{metadata}.pkl'), 'wb') as fout:
     pickle.dump(loss_dict, fout)

@@ -5,51 +5,43 @@ from jax.random import categorical
 import jax
 import numpy as np
 
-class Product(hk.Module):
-    def __init__(self, cells, idx):
-        super().__init__(name=f"Product{idx}")
-        self.cells = cells
-
-    def __call__(self, t):
-        weekly_marginal = hk.get_parameter(
-            f'week_{t}',
-            (self.cells[t],),
-            init=hk.initializers.RandomNormal(),
-            dtype='float32'
-        )
-
-        return softmax(weekly_marginal, axis=0)
-
-
 class MixtureOfProductsModel(hk.Module):
     def __init__(self, cells, weeks, n, name="MixtureOfProductsModel", learn_weights=True):
         super().__init__(name=name)
         self.weeks = weeks
         self.cells = cells
-        self.n = n # number of product distributions
+        self.n = n  # number of product distributions
         self.products = []
         self.learn_weights = learn_weights
+        self.vectorized_get_prod_k_marginal = hk.vmap(self.get_prod_k_marginal, split_rng=False, in_axes=(0, None, 0))
+        self.batch_size = 2
+        self.batched_get_marginals = hk.vmap(self.marginal_batch, split_rng=False, in_axes=(0, None, 0))
     
-    def get_prod_k_marginal(self, k, tsteps): 
+    def get_prod_k_marginal(self, k, components, weight):
         prod_k_marginal = jnp.asarray(1)
-        for tstep in tsteps:
-            prod_k_marginal = jnp.tensordot(prod_k_marginal, self.products[k](tstep), axes=0)
-        return prod_k_marginal
+        # note idx is kind of a week
+        for idx in range(len(components)):
+            prod_k_marginal = jnp.tensordot(prod_k_marginal, components[idx][k], axes=0)
+        return weight * prod_k_marginal
+    
+    def marginal_batch(self, weights, components, ks):
+        marginal = self.vectorized_get_prod_k_marginal(ks, components, weights).sum(axis=0)
+        return marginal
     
     def get_marginal(self, weights, tsteps):
-        marginal = 0
-        vectorized_get_prod_k_marginal = hk.vmap(self.get_prod_k_marginal)
-        k_v = jnp.array([jnp.arange(self.n)]).T
-        tsteps_v = jnp.array([tsteps] * self.n)
-        marginals = vectorized_get_prod_k_marginal(k_v, tsteps_v) * jnp.array([weights]).T
-        return marginals.sum(axis=0)
+        components = [softmax(hk.get_parameter(f'week_{t}', (self.n, self.cells[t]), init=hk.initializers.RandomNormal(), dtype='float32')) for t in tsteps]
+        ks = jnp.arange(self.n)
+        batched_ks = ks[:self.batch_size*int(self.n/self.batch_size)].reshape(int(self.n/self.batch_size), self.batch_size)
+        batched_weights = weights[:self.batch_size*int(self.n/self.batch_size)].reshape(int(self.n/self.batch_size), self.batch_size)
+        # print(batched_weights)
+        # print(batched_ks)
+        # compute weighted marginals of components in batches of 150
+        marginal = self.batched_get_marginals(batched_weights, components, batched_ks).sum(axis=0)
+        # compute marginals of any remaining components
+        if self.n % self.batch_size != 0:
+            marginal += self.vectorized_get_prod_k_marginal(ks[-1 * (self.n%self.batch_size):], components, weights[-1 * (self.n%self.batch_size):]).sum(axis=0)
         
-#         for k in range(self.n):
-#             prod_k_marginal = jnp.asarray(1)
-#             for tstep in tsteps:
-#                 prod_k_marginal = jnp.tensordot(prod_k_marginal, self.products[k](tstep), axes=0)
-#             marginal += weights[k] * prod_k_marginal
-        #return marginal
+        return marginal
 
     def __call__(self):
         if self.learn_weights:
@@ -64,35 +56,9 @@ class MixtureOfProductsModel(hk.Module):
             # fix all weights to be equal
             weights = jnp.zeros(self.n)
         weights = softmax(weights, axis=0)
-
-        # initialize product distributions
-        for k in range(self.n):
-            self.products.append(Product(self.cells, k))
-
-        #TODO: vectorize everything more somehow?
-
-        # single_tstep_marginals = []
-        # pairwise_marginals = []
-        # for t in range(self.weeks):
-        #     single_tstep_marginal = 0
-        #     for k in range(self.n):
-        #         prod_k_marginal = jnp.asarray(1)
-        #         for tstep in [t]:
-        #             prod_k_marginal = jnp.tensordot(prod_k_marginal, self.products[k](tstep), axes=0)
-        #         single_tstep_marginal += weights[k] * prod_k_marginal
-        #     single_tstep_marginals.append(single_tstep_marginal)
-        #
-        # for t in range(self.weeks - 1):
-        #     pairwise_marginal = 0
-        #     for k in range(self.n):
-        #         prod_k_marginal = jnp.asarray(1)
-        #         for tstep in [t, t + 1]:
-        #             prod_k_marginal = jnp.tensordot(prod_k_marginal, self.products[k](tstep), axes=0)
-        #         pairwise_marginal += weights[k] * prod_k_marginal
-        #     pairwise_marginals.append(pairwise_marginal)
+        # TODO: see if we can vmap this as well? (don't think we can)
         single_tstep_marginals = [self.get_marginal(weights, [t]) for t in range(self.weeks)]
-        pairwise_marginals = [self.get_marginal(weights, [t, t+1]) for t in range(self.weeks-1)]
-
+        pairwise_marginals = [self.get_marginal(weights, [t, t + 1]) for t in range(self.weeks - 1)]
         return single_tstep_marginals, pairwise_marginals
 
 
@@ -114,11 +80,11 @@ marginal: the desired marginal of the mixture of products
 def compute_marginal(params, tsteps):
     weights = softmax(params['MixtureOfProductsModel']['weights'])
     marginal = 0
-    n_products = len(params.keys()) - 1
+    n_products = params['MixtureOfProductsModel']['week_0'].shape[0]
     for k in range(n_products):
         prod_k_marginal = jnp.asarray(1)
         for tstep in tsteps:
-            prod_k_marginal = jnp.tensordot(prod_k_marginal, softmax(params[f'MixtureOfProductsModel/Product{k}'][f'week_{tstep}']), axes=0)
+            prod_k_marginal = jnp.tensordot(prod_k_marginal, softmax(params[f'MixtureOfProductsModel'][f'week_{tstep}'][k]), axes=0)
         marginal += weights[k] * prod_k_marginal
     return marginal
 
@@ -133,11 +99,11 @@ prob: the probability of the observations w.r.t to the MOP given by params
 def get_prob(params, observations):
     weights = softmax(params['MixtureOfProductsModel']['weights'])
     prob = 0
-    n_products = len(params.keys()) - 1
+    n_products = params['MixtureOfProductsModel']['week_0'][0].shape[0]
     for k in range(n_products):
         prod_k_prob = 1
         for tstep, cell in observations:
-            prod_k_prob *= softmax(params[f'MixtureOfProductsModel/Product{k}'][f'week_{tstep}'])[cell]
+            prod_k_prob *= softmax(params[f'MixtureOfProductsModel'][f'week_{tstep}'][k])[cell]
         prob += weights[k] * prod_k_prob
     return prob
 
