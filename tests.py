@@ -5,7 +5,7 @@ import numpy as np
 from mixture_of_products_model import model_forward
 from mixture_of_products_validation import track_log_likelihood, to_dynamic_conversion_dict
 import mixture_of_products_model
-from mixture_of_products_model_training import Datatuple, mask_input
+from mixture_of_products_model_training import Datatuple, mask_input, pad_input
 import haiku as hk
 import jax.numpy as jnp
 import os
@@ -175,6 +175,8 @@ class TestModelInternalComputeMarginals(unittest.TestCase):
         toy_params = {'n': 2, 'locations': [3, 3, 3], 'weights': [1, 1], 'products': np.log([[[0.2, 0.2, 0.6], [0.1, 0.5, 0.4], [0.6, 0.1, 0.3]], [[0.1, 0.1, 0.8], [0.7, 0.2, 0.1], [0.4, 0.2, 0.4]]])}
         params = convert_toy_to_real(toy_params)
         weekly, pairwise = model_forward.apply(params, None, [3, 3, 3], 3, 2)
+        print(weekly)
+        print(pairwise)
         for i, marginal in enumerate(weekly):
             self.assertTrue(jnp.allclose(marginal, compute_marginal(toy_params, [i])))
         for i, marginal in enumerate(pairwise):
@@ -189,12 +191,19 @@ class TestModelInternalComputeMarginals(unittest.TestCase):
         toy_params = {'n': 3, 'locations': [2, 2, 3, 3], 'weights': np.log([0.2, 0.2, 0.6]), 'products': [[np.log([0.2, 0.8]), np.log([0.5, 0.5]), np.log([0.1, 0.1, 0.8]), np.log([0.1, 0.2, 0.7])],
                                                                                             [np.log([0.2, 0.8]), np.log([0.5, 0.5]), np.log([0.1, 0.1, 0.8]), np.log([0.1, 0.2, 0.7])],
                                                                                             [np.log([0.2, 0.8]), np.log([0.5, 0.5]), np.log([0.1, 0.1, 0.8]), np.log([0.1, 0.2, 0.7])]]}
+
         params = convert_toy_to_real(toy_params)
         weekly, pairwise = model_forward.apply(params, None, [2, 2, 3, 3], 4, 3)
+        toy_weekly = [compute_marginal(toy_params, [t]) for t in range(len(toy_params['locations']))]
+        toy_pairwise = [compute_marginal(toy_params, [t, t+1]) for t in range(len(toy_params['locations'])-1)]
+        toy_pairwise, toy_weekly = pad_input(toy_pairwise, toy_weekly, toy_params['locations'])
+        print(f"weekly marginals: {weekly}")
+        print(f"pairwise marginals: {pairwise}")
+        print(f"")
         for i, marginal in enumerate(weekly):
-            self.assertTrue(jnp.allclose(marginal, compute_marginal(toy_params, [i])))
+            self.assertTrue(jnp.allclose(marginal, toy_weekly[i]))
         for i, marginal in enumerate(pairwise):
-            self.assertTrue(jnp.allclose(marginal, compute_marginal(toy_params, [i, i+1])))
+            self.assertTrue(jnp.allclose(marginal, toy_pairwise[i]))
 
 
 class TestToyComputeMarginals(unittest.TestCase):

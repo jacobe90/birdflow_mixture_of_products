@@ -39,6 +39,13 @@ def mask_input(true_densities, dtuple):
 
     return distance_matrices, masked_densities
 
+def pad_input(distance_matrices, masked_densities, cells):
+    max_cells = jnp.max(jnp.array(cells))
+    for t, distance_matrix in enumerate(distance_matrices):
+        distance_matrices[t] = jnp.pad(distance_matrix, ((0, max_cells - cells[t]), (0, max_cells - cells[t+1])))
+    for t, density in enumerate(masked_densities):
+        masked_densities[t] = jnp.pad(density, (0, max_cells - cells[t]))
+    return distance_matrices, masked_densities
 
 def obs_loss(pred_densities, true_densities):
     obs = 0

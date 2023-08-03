@@ -5,6 +5,15 @@ from jax.random import categorical
 import jax
 import numpy as np
 
+# changes so far:
+# - vmap computation of marginals for each component (vector of components) -> vector of marginals
+# - jit of the init function (eliminated all memory overflow issues I was having)
+# in progress:
+# - vmap computation of all pairwise and multi-timestep marginals (vector of vectors of timesteps) -> vector of marginals
+# issue: can't request the parameters for the cells within a vmapped function, and can't easily precompute everything
+#        and then look everything up because we can't store the cells in a jax array due to varying cells per week
+# fix: pregenerate all the cell probabilities, store in a bigger homogenous JAX array with zeroes for padding
+
 class MixtureOfProductsModel(hk.Module):
     def __init__(self, cells, weeks, n, name="MixtureOfProductsModel", learn_weights=True):
         super().__init__(name=name)
@@ -15,9 +24,11 @@ class MixtureOfProductsModel(hk.Module):
         self.learn_weights = learn_weights
         self.vectorized_get_prod_k_marginal = hk.vmap(self.get_prod_k_marginal, split_rng=False, in_axes=(0, None, 0))
         self.batch_size = 2
-        self.batched_get_marginals = hk.vmap(self.marginal_batch, split_rng=False, in_axes=(0, None, 0))
+        # self.batched_get_marginals = hk.vmap(self.marginal_batch, split_rng=False, in_axes=(0, None, 0))
         self.get_marginal_vectorized = hk.vmap(self.get_marginal, split_rng=False, in_axes=(None, 0))
         self.get_components_for_week_vectorized = hk.vmap(self.get_components_for_week, split_rng=False, in_axes=(0))
+        self.components = jnp.array([jnp.pad(softmax(hk.get_parameter(f'week_{t}', (self.n, self.cells[t]), init=hk.initializers.RandomNormal(), dtype='float32')), ((0,0), (0, max(self.cells) - self.cells[t]))) for t in range(self.weeks)])
+
     def get_prod_k_marginal(self, k, components, weight):
         prod_k_marginal = jnp.asarray(1)
         # note idx is kind of a week
@@ -30,7 +41,8 @@ class MixtureOfProductsModel(hk.Module):
         return marginal
     
     def get_components_for_week(self, t):
-        return softmax(hk.get_parameter(f'week_{t}', (self.n, 3), init=hk.initializers.RandomNormal(), dtype='float32'))
+        return self.components[t]
+        #return softmax(hk.get_parameter(f'week_{t}', (self.n, self.cells[t]), init=hk.initializers.RandomNormal(), dtype='float32'))
     
     def get_marginal(self, weights, tsteps):
         components = self.get_components_for_week_vectorized(tsteps)
@@ -66,14 +78,16 @@ class MixtureOfProductsModel(hk.Module):
             # fix all weights to be equal
             weights = jnp.zeros(self.n)
         weights = softmax(weights, axis=0)
-        
+
         # TODO: see if we can vmap this as well? (idea: vmap over the tsteps component of get_marginal, do two calls to this vmapped function to get all the single tstep and pairwise marginals)
-        # single_tsteps = jnp.empty((self.weeks, 1)).at[:,0].set(jnp.arange(self.weeks)).astype('int32')
-        # single_tstep_marginals = self.get_marginal_vectorized(weights, single_tsteps)
-        # pairwise_tsteps = jnp.empty((self.weeks-1, 2)).at[:,0].set(jnp.arange(self.weeks-1)).at[:, 1].set(jnp.arange(1, self.weeks)).astype('int32')
-        # pairwise_marginals = self.get_marginal_vectorized(weights, pairwise_tsteps)
-        single_tstep_marginals = [self.get_marginal(weights, jnp.array([[t]])) for t in range(self.weeks)]
-        pairwise_marginals = [self.get_marginal(weights, jnp.array([[t], [t + 1]])) for t in range(self.weeks - 1)]
+        single_tsteps = jnp.empty((self.weeks, 1)).at[:,0].set(jnp.arange(self.weeks)).astype('int32')
+        single_tstep_marginals = self.get_marginal_vectorized(weights, single_tsteps)
+        pairwise_tsteps = jnp.empty((self.weeks-1, 2)).at[:,0].set(jnp.arange(self.weeks-1)).at[:, 1].set(jnp.arange(1, self.weeks)).astype('int32')
+        pairwise_marginals = self.get_marginal_vectorized(weights, pairwise_tsteps)
+        #print(self.get_components_for_week_vectorized(jnp.array([0, 1])))
+        #print(self.get_marginal_vectorized(weights, jnp.array([[0, 1]])))
+        # single_tstep_marginals = [self.get_marginal_vectorized(weights, jnp.array([[t]])) for t in range(self.weeks)]
+        # pairwise_marginals = [self.get_marginal_vectorized(weights, jnp.array([[t, t + 1]])) for t in range(self.weeks - 1)]
         return single_tstep_marginals, pairwise_marginals
 
 
