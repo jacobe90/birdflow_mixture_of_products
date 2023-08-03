@@ -9,18 +9,19 @@ class MixtureOfProductsModel(hk.Module):
     def __init__(self, cells, weeks, n, name="MixtureOfProductsModel", learn_weights=True):
         super().__init__(name=name)
         self.weeks = weeks
-        self.cells = cells
+        self.cells = jnp.array(cells)
         self.n = n  # number of product distributions
         self.products = []
         self.learn_weights = learn_weights
         self.vectorized_get_prod_k_marginal = hk.vmap(self.get_prod_k_marginal, split_rng=False, in_axes=(0, None, 0))
         self.batch_size = 2
         self.batched_get_marginals = hk.vmap(self.marginal_batch, split_rng=False, in_axes=(0, None, 0))
-    
+        self.get_marginal_vectorized = hk.vmap(self.get_marginal, split_rng=False, in_axes=(None, 0))
+        self.get_components_for_week_vectorized = hk.vmap(self.get_components_for_week, split_rng=False, in_axes=(0))
     def get_prod_k_marginal(self, k, components, weight):
         prod_k_marginal = jnp.asarray(1)
         # note idx is kind of a week
-        for idx in range(len(components)):
+        for idx in range(len(components)): # would it help to eliminate the for loop here too?
             prod_k_marginal = jnp.tensordot(prod_k_marginal, components[idx][k], axes=0)
         return weight * prod_k_marginal
     
@@ -28,20 +29,29 @@ class MixtureOfProductsModel(hk.Module):
         marginal = self.vectorized_get_prod_k_marginal(ks, components, weights).sum(axis=0)
         return marginal
     
+    def get_components_for_week(self, t):
+        return softmax(hk.get_parameter(f'week_{t}', (self.n, 3), init=hk.initializers.RandomNormal(), dtype='float32'))
+    
     def get_marginal(self, weights, tsteps):
-        components = [softmax(hk.get_parameter(f'week_{t}', (self.n, self.cells[t]), init=hk.initializers.RandomNormal(), dtype='float32')) for t in tsteps]
-        ks = jnp.arange(self.n)
-        batched_ks = ks[:self.batch_size*int(self.n/self.batch_size)].reshape(int(self.n/self.batch_size), self.batch_size)
-        batched_weights = weights[:self.batch_size*int(self.n/self.batch_size)].reshape(int(self.n/self.batch_size), self.batch_size)
-        # print(batched_weights)
-        # print(batched_ks)
-        # compute weighted marginals of components in batches of 150
-        marginal = self.batched_get_marginals(batched_weights, components, batched_ks).sum(axis=0)
-        # compute marginals of any remaining components
-        if self.n % self.batch_size != 0:
-            marginal += self.vectorized_get_prod_k_marginal(ks[-1 * (self.n%self.batch_size):], components, weights[-1 * (self.n%self.batch_size):]).sum(axis=0)
+        components = self.get_components_for_week_vectorized(tsteps)
+        #components = [softmax(hk.get_parameter(f'week_{t}', (self.n, self.cells[t]), init=hk.initializers.RandomNormal(), dtype='float32')) for t in tsteps]
+
+        # unbatched marginal computation
+        return self.vectorized_get_prod_k_marginal(np.arange(self.n), components, weights).sum(axis=0)
         
-        return marginal
+        # compute marginal (batched)
+        # ks = jnp.arange(self.n)
+        # batched_ks = ks[:self.batch_size*int(self.n/self.batch_size)].reshape(int(self.n/self.batch_size), self.batch_size)
+        # batched_weights = weights[:self.batch_size*int(self.n/self.batch_size)].reshape(int(self.n/self.batch_size), self.batch_size)
+        
+        # compute weighted marginals of components in batches of 150
+        #marginal = self.batched_get_marginals(batched_weights, components, batched_ks).sum(axis=0)
+        
+        # compute marginals of any remaining components
+        # if self.n % self.batch_size != 0:
+        #     marginal += self.vectorized_get_prod_k_marginal(ks[-1 * (self.n%self.batch_size):], components, weights[-1 * (self.n%self.batch_size):]).sum(axis=0)
+        
+        #return marginal
 
     def __call__(self):
         if self.learn_weights:
@@ -56,9 +66,14 @@ class MixtureOfProductsModel(hk.Module):
             # fix all weights to be equal
             weights = jnp.zeros(self.n)
         weights = softmax(weights, axis=0)
-        # TODO: see if we can vmap this as well? (don't think we can)
-        single_tstep_marginals = [self.get_marginal(weights, [t]) for t in range(self.weeks)]
-        pairwise_marginals = [self.get_marginal(weights, [t, t + 1]) for t in range(self.weeks - 1)]
+        
+        # TODO: see if we can vmap this as well? (idea: vmap over the tsteps component of get_marginal, do two calls to this vmapped function to get all the single tstep and pairwise marginals)
+        # single_tsteps = jnp.empty((self.weeks, 1)).at[:,0].set(jnp.arange(self.weeks)).astype('int32')
+        # single_tstep_marginals = self.get_marginal_vectorized(weights, single_tsteps)
+        # pairwise_tsteps = jnp.empty((self.weeks-1, 2)).at[:,0].set(jnp.arange(self.weeks-1)).at[:, 1].set(jnp.arange(1, self.weeks)).astype('int32')
+        # pairwise_marginals = self.get_marginal_vectorized(weights, pairwise_tsteps)
+        single_tstep_marginals = [self.get_marginal(weights, jnp.array([[t]])) for t in range(self.weeks)]
+        pairwise_marginals = [self.get_marginal(weights, jnp.array([[t], [t + 1]])) for t in range(self.weeks - 1)]
         return single_tstep_marginals, pairwise_marginals
 
 

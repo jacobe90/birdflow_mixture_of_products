@@ -4,6 +4,7 @@ from collections import namedtuple
 import jax.numpy as jnp
 from jax import jit, value_and_grad, vmap
 from scipy.spatial.distance import pdist, squareform
+from functools import partial
 
 Datatuple = namedtuple('Datatuple', ['weeks', 'cells', 'distances', 'masks'])
 
@@ -70,9 +71,9 @@ def ent_loss(probs, flows):
     return ent
 
 
-def loss_fn(params, cells, true_densities, d_matrices, obs_weight, dist_weight, ent_weight, num_products):
+def loss_fn(params, cells, true_densities, d_matrices, obs_weight, dist_weight, ent_weight, num_products, learn_weights=True):
     weeks = len(true_densities)
-    pred = model_forward.apply(params, None, cells, weeks, num_products)
+    pred = model_forward.apply(params, None, cells, weeks, num_products, learn_weights=learn_weights)
     pred_densities, flows = pred
     obs = obs_loss(pred_densities, true_densities)
     dist = distance_loss(flows, d_matrices)
@@ -87,8 +88,9 @@ def train_model(loss_fn,
                 cells,
                 weeks,
                 key,
-                num_products=10):
-    params = model_forward.init(next(key), cells, weeks, num_products)
+                num_products=10,
+                learn_weights=True):
+    params = jit(partial(model_forward.init, rng=next(key), cells=cells, weeks=weeks, n=num_products, learn_weights=learn_weights))()
     opt_state = optimizer.init(params)
 
     def update(params, opt_state):

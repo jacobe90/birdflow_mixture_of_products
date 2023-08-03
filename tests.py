@@ -167,9 +167,9 @@ class TestComputeMarginals(unittest.TestCase):
 class TestModelInternalComputeMarginals(unittest.TestCase):
     def test_model_forward(self):
         key = hk.PRNGSequence(42)
-        params = model_forward.init(next(key), [10, 10, 10], 3, 10, learn_weights=True)
-        weekly, pairwise = model_forward.apply(params, None, [10, 10, 10], 3, 10)
-
+        params = model_forward.init(next(key), jnp.array([10, 10, 10]), 3, 10, learn_weights=True)
+        weekly, pairwise = model_forward.apply(params, None, jnp.array([10, 10, 10]), 3, 10)
+        print(weekly[0])
     def test_model_internal_compute_marginals_ex_1(self):
         key = hk.PRNGSequence(42)
         toy_params = {'n': 2, 'locations': [3, 3, 3], 'weights': [1, 1], 'products': np.log([[[0.2, 0.2, 0.6], [0.1, 0.5, 0.4], [0.6, 0.1, 0.3]], [[0.1, 0.1, 0.8], [0.7, 0.2, 0.1], [0.4, 0.2, 0.4]]])}

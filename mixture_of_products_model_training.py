@@ -4,6 +4,7 @@ from collections import namedtuple
 import jax.numpy as jnp
 from jax import jit, value_and_grad, vmap
 from scipy.spatial.distance import pdist, squareform
+from functools import partial
 
 Datatuple = namedtuple('Datatuple', ['weeks', 'cells', 'distances', 'masks'])
 
@@ -89,7 +90,7 @@ def train_model(loss_fn,
                 key,
                 num_products=10,
                 learn_weights=True):
-    params = model_forward.init(next(key), cells, weeks, num_products, learn_weights=learn_weights)
+    params = jit(partial(model_forward.init, rng=next(key), cells=cells, weeks=weeks, n=num_products, learn_weights=learn_weights))()
     opt_state = optimizer.init(params)
 
     def update(params, opt_state):
