@@ -8,10 +8,12 @@ import mixture_of_products_model
 from mixture_of_products_model_training import Datatuple, mask_input, pad_input
 import haiku as hk
 import jax.numpy as jnp
+from jax import jit
 import os
 import h5py
 import pandas as pd
 import math
+from functools import partial
 
 def convert_toy_to_real(params):
     real_params = {}
@@ -170,6 +172,12 @@ class TestModelInternalComputeMarginals(unittest.TestCase):
         params = model_forward.init(next(key), jnp.array([10, 10, 10]), 3, 10, learn_weights=True)
         weekly, pairwise = model_forward.apply(params, None, jnp.array([10, 10, 10]), 3, 10)
         print(weekly[0])
+    def test_jit_compiled_init(self):
+        key = hk.PRNGSequence(42)
+        params = jit(partial(model_forward.init, cells=[1, 2, 3], rng=next(key), weeks=3, n=6, learn_weights=True,))()
+        weekly, pairwise = model_forward.apply(params, None, jnp.array([1, 2, 3]), 3, 6)
+        print(weekly)
+        print(pairwise)
     def test_model_internal_compute_marginals_ex_1(self):
         key = hk.PRNGSequence(42)
         toy_params = {'n': 2, 'locations': [3, 3, 3], 'weights': [1, 1], 'products': np.log([[[0.2, 0.2, 0.6], [0.1, 0.5, 0.4], [0.6, 0.1, 0.3]], [[0.1, 0.1, 0.8], [0.7, 0.2, 0.1], [0.4, 0.2, 0.4]]])}

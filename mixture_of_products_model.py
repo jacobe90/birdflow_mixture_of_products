@@ -18,7 +18,7 @@ class MixtureOfProductsModel(hk.Module):
     def __init__(self, cells, weeks, n, name="MixtureOfProductsModel", learn_weights=True):
         super().__init__(name=name)
         self.weeks = weeks
-        self.cells = jnp.array(cells)
+        self.cells = cells
         self.n = n  # number of product distributions
         self.products = []
         self.learn_weights = learn_weights
