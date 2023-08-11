@@ -84,6 +84,9 @@ class MixtureOfProductsModel(hk.Module):
         single_tstep_marginals = self.get_marginal_vectorized(weights, single_tsteps)
         pairwise_tsteps = jnp.empty((self.weeks-1, 2)).at[:,0].set(jnp.arange(self.weeks-1)).at[:, 1].set(jnp.arange(1, self.weeks)).astype('int32')
         pairwise_marginals = self.get_marginal_vectorized(weights, pairwise_tsteps)
+
+        single_tstep_marginals += 1e-20 * jnp.ones_like(single_tstep_marginals)
+        pairwise_marginals += 1e-20 * jnp.ones_like(pairwise_marginals)
         #print(self.get_components_for_week_vectorized(jnp.array([0, 1])))
         #print(self.get_marginal_vectorized(weights, jnp.array([[0, 1]])))
         # single_tstep_marginals = [self.get_marginal_vectorized(weights, jnp.array([[t]])) for t in range(self.weeks)]
@@ -204,9 +207,9 @@ Returns
 route: a T-timestep route sampled from the mixture of products model
 """
 def sample_route(params):
-    weight_logits = jnp.asarray(params['MixtureOfProductsModel']['weights'], dtype=float)
+    weights = softmax(params['MixtureOfProductsModel']['weights'])
     key = hk.PRNGSequence(np.random.randint(100))
-    k = categorical(next(key), weight_logits)
+    k = categorical(next(key), weights)
     route = []
     T = len(params['MixtureOfProductsModel/Product0'].keys())
     for t in range(T):
