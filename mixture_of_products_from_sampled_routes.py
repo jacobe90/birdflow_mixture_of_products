@@ -17,6 +17,7 @@ from scipy.stats import multivariate_normal
 from jax import jit
 import haiku as hk
 import optax
+import time
 
 
 def sample_trajectory(rng_seq, flow_params, ipos=None, start=1, end=None):
@@ -128,7 +129,8 @@ Returns: a marginal with zeroes everywhere outside of the indices given by box
 
 def get_weekly_marginal(box_center, week, cells, masks, nan_mask, x_dim, y_dim, box_dim):
     box = get_box(box_center, week, masks, nan_mask, x_dim, y_dim, box_dim)
-    marginal = np.zeros(cells[week])
+    marginal = np.empty(cells[week])
+    marginal.fill(-50)
     for idx, coords in box.items():
         marginal[idx] = multivariate_normal.pdf(coords, mean=[0, 0], cov=[[1, 0], [0, 1]])
     return jnp.array(marginal)
@@ -168,15 +170,16 @@ parser.add_argument('scale', type=float, help='scale of gaussian used to generat
 parser.add_argument('--species', type=str, help='species name', default='amewoo')
 parser.add_argument('--resolution', type=int, help='model resolution', default=48)
 parser.add_argument('--obs_weight', help='Weight on the observation term of the loss', default=1.0, type=float)
-parser.add_argument('--dist_weight', help='Weight on the distance penalty in the loss', default=1e-2, type=float)
-parser.add_argument('--ent_weight', help='Weight on the joint entropy of the model', default=1e-4, type=float)
+parser.add_argument('--dist_weight', help='Weight on the distance penalty in the loss', default=0.01, type=float)
+parser.add_argument('--ent_weight', help='Weight on the joint entropy of the model', default=0.0001, type=float)
 parser.add_argument('--dist_pow', help='The exponent of the distance penalty', default=0.4, type=float)
 parser.add_argument("--dont_normalize", action="store_true", help="don't normalize distance matrix")
 parser.add_argument('--rng_seed', help='Random number generator seed', default=17, type=int)
 args = parser.parse_args()
-
+print(args)
+t1 = time.time()
 # load all hdf5 info
-hdf_src = '/Users/jacobepstein/Documents/work/BirdFlowModels/amewoo_2021_48km.hdf5'
+hdf_src = os.path.join(args.root, f'{args.species}_2021_{args.resolution}km.hdf5')
 file = h5py.File(hdf_src, 'r')
 true_densities = np.asarray(file['distr']).T
 weeks = true_densities.shape[0]
@@ -203,15 +206,17 @@ y_dim = int(np.asarray(file['geom']['nrow']))
 key = hk.PRNGSequence(args.rng_seed)
 
 # load markov chain and sample routes
-with open(os.path.join(args.markov_params_dir,
-                       f'{args.species}_params_{args.resolution}_obs{args.obs_weight}_ent{args.ent_weight}_dist{args.dist_weight}_pow{args.dist_pow}.pkl'),
-          'rb') as f:
+with open(os.path.join(args.markov_params_dir,   f'markov_params_{args.species}_{args.resolution}_obs{args.obs_weight}_ent{args.ent_weight}_dist{args.dist_weight}_pow{args.dist_pow}.pkl'),'rb') as f:
     markov_params = pickle.load(f)
 routes = np.asarray([sample_trajectory(key, markov_params) for k in range(args.num_routes)])
+print(f"preprocessing: {(time.time()-t1)/60:.4f} min")
 
+t2 = time.time()
 # generate mixture of products parameters from sampled routes
 mop_params = mop_from_routes(routes, cells, masks, nan_mask, x_dim, y_dim, args.box_radius)
+print(f"generating parameters: {(time.time()-t2)/60:.4f} min")
 
+t3 = time.time()
 # evaluate loss function
 loss = jit(partial(loss_fn, cells=cells,
                    true_densities=masked_densities,
@@ -220,9 +225,9 @@ loss = jit(partial(loss_fn, cells=cells,
                    dist_weight=args.dist_weight,
                    ent_weight=args.ent_weight,
                    num_products=args.num_routes))(mop_params)
+print(f"evaluating loss function: {(time.time()-t3)/60:.4f} min")
 
 # save parameters and loss
-with open(os.path.join(args.save_dir,
-                       f'{args.species}_mop_from_routes_params_and_losses_{args.resolution}_obs{args.obs_weight}_ent{args.ent_weight}_dist{args.dist_weight}_pow{args.dist_pow}_n{args.num_routes}.pkl'),
+with open(os.path.join(args.save_dir,         f'{args.species}_mop_from_routes_params_and_losses_{args.resolution}_obs{args.obs_weight}_ent{args.ent_weight}_dist{args.dist_weight}_pow{args.dist_pow}_radius{args.box_radius}_n{args.num_routes}.pkl'),
           'wb') as f:
-    pickle.dump({'params': mop_params, 'losses': loss}, f)
+    pickle.dump({'n': args.num_routes, 'radius': args.box_radius, 'params': mop_params, 'losses': loss}, f)
