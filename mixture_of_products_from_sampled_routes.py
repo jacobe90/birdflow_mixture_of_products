@@ -271,6 +271,6 @@ loss = jit(partial(loss_fn, cells=cells,
 print(f"evaluating loss function: {(time.time()-t3)/60:.4f} min")
 
 # save parameters and loss
-with open(os.path.join(args.save_dir,         f'{args.species}_mop_from_routes_params_and_losses_{args.resolution}_obs{args.obs_weight}_ent{args.ent_weight}_dist{args.dist_weight}_pow{args.dist_pow}_radius{args.box_radius}_n{args.num_routes}.pkl'),
+with open(os.path.join(args.save_dir, f'{args.species}_mop_from_routes_params_and_losses_{args.resolution}_obs{args.obs_weight}_ent{args.ent_weight}_dist{args.dist_weight}_pow{args.dist_pow}_radius{args.box_radius}_n{args.num_routes}_scale{args.scale}.pkl'),
           'wb') as f:
-    pickle.dump({'n': args.num_routes, 'radius': args.box_radius, 'params': mop_params, 'losses': loss}, f)
+    pickle.dump({'n': args.num_routes, 'radius': args.box_radius, 'scale': args.scale, 'params': mop_params, 'losses': loss}, f)
