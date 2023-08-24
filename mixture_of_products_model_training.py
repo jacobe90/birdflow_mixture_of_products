@@ -96,8 +96,12 @@ def train_model(loss_fn,
                 weeks,
                 key,
                 num_products=10,
-                learn_weights=True):
-    params = jit(partial(model_forward.init, rng=next(key), cells=cells, weeks=weeks, n=num_products, learn_weights=learn_weights))()
+                learn_weights=True,
+                initial_params=None):
+    if initial_params is None:
+        params = jit(partial(model_forward.init, rng=next(key), cells=cells, weeks=weeks, n=num_products, learn_weights=learn_weights))()
+    else:
+        params = initial_params
     opt_state = optimizer.init(params)
 
     def update(params, opt_state):

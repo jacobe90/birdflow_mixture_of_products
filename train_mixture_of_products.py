@@ -27,6 +27,8 @@ parser.add_argument('--training_steps', help='The number of training iterations'
 parser.add_argument('--rng_seed', help='Random number generator seed', default=17, type=int)
 parser.add_argument('--num_components', help='Number of mixture components', default=10, type=int)
 parser.add_argument('--fix_weights', action="store_true", help="Don't learn the weights, rather, fix them to be equal")
+parser.add_argument('--initialize_from_params', action="store_true", help="Initialize MoP from given parameters")
+parser.add_argument('--initial_params_path', type=str, help='path to pkl with initial parameters')
 args = parser.parse_args()
 
 print(str(args))
@@ -65,6 +67,11 @@ loss_fn = jit(partial(loss_fn,
                       learn_weights=not args.fix_weights))
 
 # Run Training and get params and losses
+initial_params = None
+if args.initialize_from_params:
+    with open(args.initial_params_path, 'rb') as f:
+        initial_params = pickle.load(f)
+
 params, loss_dict = train_model(loss_fn,
                                 optimizer,
                                 args.training_steps,
@@ -72,7 +79,8 @@ params, loss_dict = train_model(loss_fn,
                                 dtuple.weeks,
                                 key,
                                 num_products=args.num_components,
-                                learn_weights=not args.fix_weights)
+                                learn_weights=not args.fix_weights,
+                                initial_params=initial_params)
 
 # save everything to a file in save_dir
 metadata = f'{args.species}_{args.resolution}km_obs{args.obs_weight}_ent{args.ent_weight}_dist{args.dist_weight}_pow{args.dist_pow}_n{args.num_components}_key{args.rng_seed}'
