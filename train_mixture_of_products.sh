@@ -29,7 +29,7 @@ done
 
 if ${FIX}; then
     /home/jepstein_umass_edu/.conda/envs/birdflow_two/bin/python train_mixture_of_products.py $ROOT $SAVEDIR $SPECIES $RES --ent_weight $ENTWEIGHT --dist_weight $DISTWEIGHT --dist_pow $DISTPOW --num_components $NCOMPONENTS --rng_seed $KEYSEED --fix_weights
-if ${CUSTOM_INIT}; then
+elif ${CUSTOM_INIT}; then
     /home/jepstein_umass_edu/.conda/envs/birdflow_two/bin/python train_mixture_of_products.py $ROOT $SAVEDIR $SPECIES $RES --ent_weight $ENTWEIGHT --dist_weight $DISTWEIGHT --dist_pow $DISTPOW --num_components $NCOMPONENTS --rng_seed $KEYSEED --initialize_from_params --initial_params_path $INITIAL_PARAMS_PATH
 else
     /home/jepstein_umass_edu/.conda/envs/birdflow_two/bin/python train_mixture_of_products.py $ROOT $SAVEDIR $SPECIES $RES --ent_weight $ENTWEIGHT --dist_weight $DISTWEIGHT --dist_pow $DISTPOW --num_components $NCOMPONENTS --rng_seed $KEYSEED

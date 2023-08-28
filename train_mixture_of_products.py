@@ -1,6 +1,6 @@
 from functools import partial
 from mixture_of_products_model_training import loss_fn, train_model, Datatuple, mask_input, pad_input
-
+import time
 import pickle
 import argparse
 import os
@@ -66,12 +66,16 @@ loss_fn = jit(partial(loss_fn,
                       num_products=args.num_components,
                       learn_weights=not args.fix_weights))
 
-# Run Training and get params and losses
+# get initial params if applicable
 initial_params = None
+initial_params_metadata = ""
 if args.initialize_from_params:
     with open(args.initial_params_path, 'rb') as f:
-        initial_params = pickle.load(f)
-
+        params_obj = pickle.load(f)
+        initial_params = params_obj["params"]
+        initial_params_metadata = f"_dim{params_obj['radius']}_scale{params_obj['scale']}"
+t1 = time.time()
+# Run Training and get params and losses
 params, loss_dict = train_model(loss_fn,
                                 optimizer,
                                 args.training_steps,
@@ -81,9 +85,10 @@ params, loss_dict = train_model(loss_fn,
                                 num_products=args.num_components,
                                 learn_weights=not args.fix_weights,
                                 initial_params=initial_params)
+print(f"training took {((time.time() - t1) / 60):.4f} minutes")
 
 # save everything to a file in save_dir
-metadata = f'{args.species}_{args.resolution}km_obs{args.obs_weight}_ent{args.ent_weight}_dist{args.dist_weight}_pow{args.dist_pow}_n{args.num_components}_key{args.rng_seed}'
+metadata = f'{args.species}_{args.resolution}km_obs{args.obs_weight}_ent{args.ent_weight}_dist{args.dist_weight}_pow{args.dist_pow}_n{args.num_components}_key{args.rng_seed}' + initial_params_metadata
 if args.fix_weights:
     metadata += "_fixed_weights"
 with open(os.path.join(args.save_dir, f'mop_params_{metadata}.pkl'), 'wb') as fout:

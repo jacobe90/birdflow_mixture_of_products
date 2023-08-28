@@ -5,26 +5,15 @@ from jax.random import categorical
 import jax
 import numpy as np
 
-# changes so far:
-# - vmap computation of marginals for each component (vector of components) -> vector of marginals
-# - jit of the init function (eliminated all memory overflow issues I was having)
-# in progress:
-# - vmap computation of all pairwise and multi-timestep marginals (vector of vectors of timesteps) -> vector of marginals
-# issue: can't request the parameters for the cells within a vmapped function, and can't easily precompute everything
-#        and then look everything up because we can't store the cells in a jax array due to varying cells per week
-# fix: pregenerate all the cell probabilities, store in a bigger homogenous JAX array with zeroes for padding
-
-class MixtureOfProductsModel(hk.Module):
+# MoP with vmapped get_marginal, much slower for some reason?
+class MixtureOfProductsModelDev(hk.Module):
     def __init__(self, cells, weeks, n, name="MixtureOfProductsModel", learn_weights=True):
         super().__init__(name=name)
         self.weeks = weeks
         self.cells = cells
         self.n = n  # number of product distributions
-        self.products = []
         self.learn_weights = learn_weights
         self.vectorized_get_prod_k_marginal = hk.vmap(self.get_prod_k_marginal, split_rng=False, in_axes=(0, None, 0))
-        self.batch_size = 2
-        # self.batched_get_marginals = hk.vmap(self.marginal_batch, split_rng=False, in_axes=(0, None, 0))
         self.get_marginal_vectorized = hk.vmap(self.get_marginal, split_rng=False, in_axes=(None, 0))
         self.get_components_for_week_vectorized = hk.vmap(self.get_components_for_week, split_rng=False, in_axes=(0))
         self.components = jnp.array([jnp.pad(softmax(hk.get_parameter(f'week_{t}', (self.n, self.cells[t]), init=hk.initializers.RandomNormal(), dtype='float32')), ((0,0), (0, max(self.cells) - self.cells[t]))) for t in range(self.weeks)])
@@ -36,34 +25,12 @@ class MixtureOfProductsModel(hk.Module):
             prod_k_marginal = jnp.tensordot(prod_k_marginal, components[idx][k], axes=0)
         return weight * prod_k_marginal
     
-    def marginal_batch(self, weights, components, ks):
-        marginal = self.vectorized_get_prod_k_marginal(ks, components, weights).sum(axis=0)
-        return marginal
-    
     def get_components_for_week(self, t):
         return self.components[t]
-        #return softmax(hk.get_parameter(f'week_{t}', (self.n, self.cells[t]), init=hk.initializers.RandomNormal(), dtype='float32'))
     
     def get_marginal(self, weights, tsteps):
         components = self.get_components_for_week_vectorized(tsteps)
-        #components = [softmax(hk.get_parameter(f'week_{t}', (self.n, self.cells[t]), init=hk.initializers.RandomNormal(), dtype='float32')) for t in tsteps]
-
-        # unbatched marginal computation
         return self.vectorized_get_prod_k_marginal(np.arange(self.n), components, weights).sum(axis=0)
-        
-        # compute marginal (batched)
-        # ks = jnp.arange(self.n)
-        # batched_ks = ks[:self.batch_size*int(self.n/self.batch_size)].reshape(int(self.n/self.batch_size), self.batch_size)
-        # batched_weights = weights[:self.batch_size*int(self.n/self.batch_size)].reshape(int(self.n/self.batch_size), self.batch_size)
-        
-        # compute weighted marginals of components in batches of 150
-        #marginal = self.batched_get_marginals(batched_weights, components, batched_ks).sum(axis=0)
-        
-        # compute marginals of any remaining components
-        # if self.n % self.batch_size != 0:
-        #     marginal += self.vectorized_get_prod_k_marginal(ks[-1 * (self.n%self.batch_size):], components, weights[-1 * (self.n%self.batch_size):]).sum(axis=0)
-        
-        #return marginal
 
     def __call__(self):
         if self.learn_weights:
@@ -78,24 +45,76 @@ class MixtureOfProductsModel(hk.Module):
             # fix all weights to be equal
             weights = jnp.zeros(self.n)
         weights = softmax(weights, axis=0)
-
-        # TODO: see if we can vmap this as well? (idea: vmap over the tsteps component of get_marginal, do two calls to this vmapped function to get all the single tstep and pairwise marginals)
+        
+        # vmapped calculation of single / pairwise marginals
         single_tsteps = jnp.empty((self.weeks, 1)).at[:,0].set(jnp.arange(self.weeks)).astype('int32')
         single_tstep_marginals = self.get_marginal_vectorized(weights, single_tsteps)
         pairwise_tsteps = jnp.empty((self.weeks-1, 2)).at[:,0].set(jnp.arange(self.weeks-1)).at[:, 1].set(jnp.arange(1, self.weeks)).astype('int32')
         pairwise_marginals = self.get_marginal_vectorized(weights, pairwise_tsteps)
-
+        
+        # this was necessary if we have zero probability cells (which messes up the entropy calculation later, which involves taking a log)
         single_tstep_marginals += 1e-20 * jnp.ones_like(single_tstep_marginals)
         pairwise_marginals += 1e-20 * jnp.ones_like(pairwise_marginals)
-        #print(self.get_components_for_week_vectorized(jnp.array([0, 1])))
-        #print(self.get_marginal_vectorized(weights, jnp.array([[0, 1]])))
-        # single_tstep_marginals = [self.get_marginal_vectorized(weights, jnp.array([[t]])) for t in range(self.weeks)]
-        # pairwise_marginals = [self.get_marginal_vectorized(weights, jnp.array([[t, t + 1]])) for t in range(self.weeks - 1)]
+        
+        return single_tstep_marginals, pairwise_marginals
+
+# currently fastest MoP training
+# 250 components ~ 6 minutes
+# 1000 components ~ 20 minutes
+class MixtureOfProductsModelFast(hk.Module):
+    def __init__(self, cells, weeks, n, name="MixtureOfProductsModel", learn_weights=True):
+        super().__init__(name=name)
+        self.weeks = weeks
+        self.cells = cells
+        self.n = n  # number of product distributions
+        self.learn_weights = learn_weights
+        self.vectorized_get_prod_k_marginal = hk.vmap(self.get_prod_k_marginal, split_rng=False, in_axes=(0, None, 0))
+        self.batch_size = 2
+        self.batched_get_marginals = hk.vmap(self.marginal_batch, split_rng=False, in_axes=(0, None, 0))
+        #self.get_marginal_vectorized = hk.vmap(self.get_marginal, split_rng=False, in_axes=(None, 0))
+        self.get_components_for_week_vectorized = hk.vmap(self.get_components_for_week, split_rng=False, in_axes=(0))
+    def get_prod_k_marginal(self, k, components, weight):
+        prod_k_marginal = jnp.asarray(1)
+        # note idx is kind of a week
+        for idx in range(len(components)): # would it help to eliminate the for loop here too?
+            prod_k_marginal = jnp.tensordot(prod_k_marginal, components[idx][k], axes=0)
+        return weight * prod_k_marginal
+    
+    def marginal_batch(self, weights, components, ks):
+        marginal = self.vectorized_get_prod_k_marginal(ks, components, weights).sum(axis=0)
+        return marginal
+    
+    def get_components_for_week(self, t):
+        return softmax(hk.get_parameter(f'week_{t}', (self.n, self.cells[t]), init=hk.initializers.RandomNormal(), dtype='float32'))
+    
+    def get_marginal(self, weights, tsteps):
+        #components = self.get_components_for_week_vectorized(tsteps)
+        components = [softmax(hk.get_parameter(f'week_{t}', (self.n, self.cells[t]), init=hk.initializers.RandomNormal(), dtype='float32')) for t in tsteps]
+
+        # unbatched marginal computation
+        return self.vectorized_get_prod_k_marginal(np.arange(self.n), components, weights).sum(axis=0) + 1e-20
+
+    def __call__(self):
+        if self.learn_weights:
+            # initialize weights
+            weights = hk.get_parameter(
+                'weights',
+                (self.n,),
+                init=hk.initializers.RandomNormal(),
+                dtype='float32'
+            )
+        else:
+            # fix all weights to be equal
+            weights = jnp.zeros(self.n)
+        weights = softmax(weights, axis=0)
+        
+        single_tstep_marginals = [self.get_marginal(weights, [t]) for t in range(self.weeks)]
+        pairwise_marginals = [self.get_marginal(weights, [t, t + 1]) for t in range(self.weeks - 1)]
         return single_tstep_marginals, pairwise_marginals
 
 
 def predict(cells, weeks, n, learn_weights=True):
-    model = MixtureOfProductsModel(cells, weeks, n, learn_weights=learn_weights)
+    model = MixtureOfProductsModelDev(cells, weeks, n, learn_weights=learn_weights)
     return model()
 
 

@@ -204,7 +204,7 @@ class TestModelInternalComputeMarginals(unittest.TestCase):
         weekly, pairwise = model_forward.apply(params, None, [2, 2, 3, 3], 4, 3)
         toy_weekly = [compute_marginal(toy_params, [t]) for t in range(len(toy_params['locations']))]
         toy_pairwise = [compute_marginal(toy_params, [t, t+1]) for t in range(len(toy_params['locations'])-1)]
-        toy_pairwise, toy_weekly = pad_input(toy_pairwise, toy_weekly, toy_params['locations'])
+        #toy_pairwise, toy_weekly = pad_input(toy_pairwise, toy_weekly, toy_params['locations'])
         print(f"weekly marginals: {weekly}")
         print(f"pairwise marginals: {pairwise}")
         print(f"")
