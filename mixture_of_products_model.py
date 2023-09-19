@@ -113,8 +113,63 @@ class MixtureOfProductsModelFast(hk.Module):
         return single_tstep_marginals, pairwise_marginals
 
 
+class MixtureOfProductsModelTakeThree(hk.Module):
+    def __init__(self, cells, weeks, n, name="MixtureOfProductsModel", learn_weights=True):
+        super().__init__(name=name)
+        self.weeks = weeks
+        self.cells = cells
+        self.n = n  # number of product distributions
+        self.learn_weights = learn_weights
+
+        # vmapped functions
+        self.get_weighted_pairwise_marginals_of_components = hk.vmap(self.get_weighted_pairwise_marginal_of_component_k, split_rng=False, in_axes=(None, 0))
+        self.get_single_timestep_marginals = hk.vmap(self.get_single_timestep_marginal, split_rng=False, in_axes=(0))
+        self.get_pairwise_marginals = hk.vmap(self.get_pairwise_marginal, split_rng=False, in_axes=(0))
+
+        # initialize parameters
+        self.components = jnp.array([jnp.pad(softmax(
+            hk.get_parameter(f'week_{t}', (self.n, self.cells[t]), init=hk.initializers.RandomNormal(),
+                             dtype='float32')), ((0, 0), (0, max(self.cells) - self.cells[t]))) for t in
+                                     range(self.weeks)])
+        if self.learn_weights:
+            # initialize weights
+            self.weights = hk.get_parameter(
+                'weights',
+                (self.n,),
+                init=hk.initializers.RandomNormal(),
+                dtype='float32'
+            )
+        else:
+            # fix all weights to be equal
+            self.weights = jnp.zeros(self.n)
+        self.weights = softmax(self.weights, axis=0)
+
+    def get_single_timestep_marginal(self, t):
+        return (self.components[t] * jnp.array([self.weights]).T).sum(axis=0)
+
+    def get_weighted_pairwise_marginal_of_component_k(self, t, k):
+        return self.weights[k] * jnp.tensordot(self.components[t][k], self.components[t+1][k], axes=0)
+
+    def get_pairwise_marginal(self, t):
+        return self.get_weighted_pairwise_marginals_of_components(t, jnp.arange(self.n)).sum(axis=0)
+
+    def __call__(self):
+        # vmapped calculation of single / pairwise marginals
+        print(f"first single-tstep marginal is: {self.get_single_timestep_marginal(0)}")
+        single_tsteps = jnp.arange(self.weeks, dtype='int32')
+        single_tstep_marginals = self.get_single_timestep_marginals(single_tsteps)
+        pairwise_tsteps = jnp.arange(self.weeks-1, dtype='int32')
+        pairwise_marginals = self.get_pairwise_marginals(pairwise_tsteps)
+
+        # this was necessary if we have zero probability cells (which messes up the entropy calculation later, which involves taking a log)
+        single_tstep_marginals += 1e-20 * jnp.ones_like(single_tstep_marginals)
+        pairwise_marginals += 1e-20 * jnp.ones_like(pairwise_marginals)
+
+        return single_tstep_marginals, pairwise_marginals
+
+
 def predict(cells, weeks, n, learn_weights=True):
-    model = MixtureOfProductsModelFast(cells, weeks, n, learn_weights=learn_weights)
+    model = MixtureOfProductsModelTakeThree(cells, weeks, n, learn_weights=learn_weights)
     return model()
 
 
