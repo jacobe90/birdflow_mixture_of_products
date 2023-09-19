@@ -49,7 +49,7 @@ masks = np.asarray(file['geom']['dynamic_mask']).T.astype(bool)
 dtuple = Datatuple(weeks, total_cells, distance_vector, masks)
 distance_matrices, masked_densities = mask_input(true_densities, dtuple)
 cells = [d.shape[0] for d in masked_densities]
-distance_matrices, masked_densities = pad_input(distance_matrices, masked_densities, cells)
+# distance_matrices, masked_densities = pad_input(distance_matrices, masked_densities, cells)
 
 # Get the random seed and optimizer
 key = hk.PRNGSequence(args.rng_seed)

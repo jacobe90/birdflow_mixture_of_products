@@ -114,7 +114,7 @@ class MixtureOfProductsModelFast(hk.Module):
 
 
 def predict(cells, weeks, n, learn_weights=True):
-    model = MixtureOfProductsModelDev(cells, weeks, n, learn_weights=learn_weights)
+    model = MixtureOfProductsModelFast(cells, weeks, n, learn_weights=learn_weights)
     return model()
 
 

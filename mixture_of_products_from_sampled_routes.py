@@ -207,7 +207,7 @@ parser.add_argument('save_dir', type=str, help='directory to save model params a
 parser.add_argument('num_routes', type=int,
                     help='number of routes to sample from markov chain / number of components in the final mixture-of-products model')
 parser.add_argument('box_dim', type=int, help='length of each marginal box edge')
-parser.add_argument('--scale', type=float, help='scale of gaussian used to generate proabilities', default=2)
+parser.add_argument('scale', type=float, help='scale of gaussian used to generate proabilities')
 parser.add_argument('--species', type=str, help='species name', default='amewoo')
 parser.add_argument('--resolution', type=int, help='model resolution', default=48)
 parser.add_argument('--obs_weight', help='Weight on the observation term of the loss', default=1.0, type=float)
@@ -236,7 +236,7 @@ masks = np.asarray(file['geom']['dynamic_mask']).T.astype(bool)
 dtuple = Datatuple(weeks, total_cells, distance_vector, masks)
 distance_matrices, masked_densities = mask_input(true_densities, dtuple)
 cells = [d.shape[0] for d in masked_densities]
-distance_matrices, masked_densities = pad_input(distance_matrices, masked_densities, cells)
+#distance_matrices, masked_densities = pad_input(distance_matrices, masked_densities, cells)
 nan_mask = np.asarray(file['geom']['mask']).flatten().astype(bool)
 
 # get x / y dimensions of the grid

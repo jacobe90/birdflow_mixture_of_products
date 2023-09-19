@@ -60,15 +60,34 @@ def train_with_equally_weighted_components(ent_weight, dist_weight, dist_pow, n_
 
 """
 Train a mixture of products model initialized with components sampled from the Markov Chain
+
+Arguments
+ent_weight, dist_weight, dist_pow: hyperparameters
+ns: list of number of components
+dims: list of dimension of box sizes used in initially sampled marginals
+scales: list of variances of Spherical Gaussian used for weekly marginals of initial components
+
+Initialize MoP model from sampled components, train the model!
 """
-def train_with_initial_mc_sampled_components(ent_weight, dist_weight, dist_pow, ns, dims, save_dir):
+def train_with_initial_mc_sampled_components(ent_weight, dist_weight, dist_pow, ns, dims, scales, save_dir):
     job_file = "/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/birdflow_mixture_of_products/train_mixture_of_products.sh"
     root_dir = "/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/birdflow_models"
     for dim in dims:
         for n in ns:
-            initial_params_path = f"/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/mixture_of_products_from_sampled_routes/amewoo_mop_from_routes_params_and_losses_48_obs1.0_ent{ent_weight}_dist{dist_weight}_pow{dist_pow}_radius{dim}_n{n}_scale2.pkl"
-            os.system(f"sbatch {job_file} -e {ent_weight} -d {dist_weight} -p {dist_pow} -n {n} -s amewoo -r 48 -o {root_dir} -i {save_dir} -k 42 -c -t {initial_params_path}")
+            for scale in scales:
+                initial_params_path = f"/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/mixture_of_products_from_sampled_routes/amewoo_mop_from_routes_params_and_losses_48_obs1.0_ent{ent_weight}_dist{dist_weight}_pow{dist_pow}_radius{dim}_n{n}_scale{scale}.pkl"
+                os.system(f"sbatch {job_file} -e {ent_weight} -d {dist_weight} -p {dist_pow} -n {n} -s amewoo -r 48 -o {root_dir} -i {save_dir} -k 42 -c -t {initial_params_path}")
 
+"""
+Generate mop parameters from Markov-Chain sampled routes, searching over n / box dim / scale
+"""
+def mc_sampled_mop_grid_search(ent_weight, dist_weight, dist_pow, ns, dims, scales, save_dir="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/mixture_of_products_from_sampled_routes/"):
+    job_file = "/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/birdflow_mixture_of_products/train_mixture_of_products_from_sampled_routes.sh"
+    for dim in dims: 
+        for n in ns:
+            for scale in scales:
+                os.system(f"sbatch {job_file} -r {n} -d {dim} -s {scale} -e {ent_weight} -w {dist_weight} -p {dist_pow} -i {save_dir}")
+    
 """
 Train a markov chain with given hyperparameter settings to be used as a baseline for mixture of products training experiments
 """
@@ -78,7 +97,9 @@ def markov_chain_baseline(ent_weight, dist_weight, dist_pow, save_dir=None):
     os.system(f"sbatch {job_file} -e {ent_weight} -d {dist_weight} -p {dist_pow} -s amewoo -r 48 -o {root_dir} -i {save_dir}")
 
 if __name__=="__main__":
-    train_with_initial_mc_sampled_components(0.0001, 0.01, 0.4, [250], [1, 2,3], "/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/initialize_with_mc_sampled_components_sanity_check")
+    # mc_sampled_mop_grid_search(0.0001, 0.01, 0.4, [100, 150, 250, 450, 1000], [5, 7, 9], [2])
+    train_with_initial_mc_sampled_components(0.0001, 0.01, 0.4, [100, 150, 250, 450, 1000], [5], [1.5, 3.0, 4.0, 8.0], "/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/initialize_with_mc_sampled_components")
+    # train_with_initial_mc_sampled_components(0.0001, 0.01, 0.4, [250], [1, 2,3], "/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/initialize_with_mc_sampled_components_sanity_check")
     #mixture_of_products_grid_search([1e-4], [1e-2], [0.4], [250, 450, 650, 1000], save_dir="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/training_speed_stress_test")
     #markov_chain_baseline(1e-4, 1e-2, 0.4, save_dir="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/markov_chain_baselines")
     #train_with_equally_weighted_components(1e-4, 1e-2, 0.4, 10, save_dir="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/fix_weights_of_components")
