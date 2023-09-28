@@ -108,6 +108,22 @@ def xy_to_cell(x, y, x_dim, y_dim):
     cell = y * x_dim + x
     return cell
 
+"""
+Arguments:
+idx: index of the cell in the weekly mask
+week: the weekly mask index to use
+masks, nan_masks: array of weekly masks, ocean mask, respectively
+
+Returns:
+x-y coordinates of cell in the biggest mask
+"""
+
+
+def get_coords(cell, week, masks, nan_mask, x_dim, y_dim):
+    medium_cell = get_index_in_bigger_grid(cell, masks[week])
+    big_cell = get_index_in_bigger_grid(medium_cell, nan_mask)
+    return cell_to_xy(big_cell, x_dim, y_dim)
+
 
 """
 cell: grid cell index (center of the box)
@@ -167,7 +183,7 @@ Returns: a vector such that applying softmax yields marginal with zeroes everywh
 """
 
 
-def get_weekly_marginal(box_center, week, cells, masks, nan_mask, x_dim, y_dim, box_dim, conversion_dict, scale):
+def get_boxed_weekly_marginal(box_center, week, cells, masks, nan_mask, x_dim, y_dim, box_dim, conversion_dict, scale):
     box = get_box(box_center, week, masks, nan_mask, x_dim, y_dim, box_dim, conversion_dict)
     marginal = np.empty(cells[week])
     marginal.fill(-jnp.inf)
@@ -175,6 +191,34 @@ def get_weekly_marginal(box_center, week, cells, masks, nan_mask, x_dim, y_dim, 
         marginal[idx] = math.log(multivariate_normal.pdf(coords, mean=[0, 0], cov=[[scale, 0], [0, scale]]))
     return jnp.array(marginal)
 
+def pdf_spherical_multivariate_normal(x_1, x_2, scale):
+    part1 = 1 / (2*np.pi*scale)
+    part2 = (-1/2) * (1/scale) * (x_1**2 + x_2**2)
+    return float(part1 * np.exp(part2))
+
+"""
+Arguments:
+center: index of the marginal probability center in the weekly max
+week: the week of the marginal
+scale: scale parameter of spherical gaussian used to generate probabilities
+conversion_dict
+
+Returns: a weekly marginal of a mixture component where cell probabilites come from a spherical gaussian centered at "center"
+"""
+def get_unboxed_weekly_marginal(center, week, cells, masks, nan_mask, x_dim, y_dim, conversion_dict, scale):
+    x_c, y_c = get_coords(center, week, masks, nan_mask, x_dim, y_dim)
+    marginal = np.empty(cells[week])
+    marginal.fill(-jnp.inf)
+    mu = np.zeros((2, 1))
+    for big_cell in range(len(nan_mask)):
+        idx = conversion_dict[big_cell]
+        if idx is not None:
+            x_big_cell, y_big_cell = cell_to_xy(big_cell, x_dim, y_dim)
+            try:
+                marginal[idx] = math.log(pdf_spherical_multivariate_normal(x_big_cell - x_c, y_big_cell - y_c, scale))
+            except:
+                continue
+    return jnp.array(marginal)
 
 """
 Arguments:
@@ -182,9 +226,7 @@ routes: An n x T array of sampled routes (n sampled routes of T timesteps)
 Returns:
 mixture of products parameters, each components corresponds to one of the routes
 """
-
-
-def mop_from_routes(routes, cells, masks, nan_mask, x_dim, y_dim, box_dim, scale):
+def mop_from_routes(routes, cells, masks, nan_mask, x_dim, y_dim, box_dim, scale, unboxed=False):
     n = routes.shape[0]
     mop_params = {'MixtureOfProductsModel': {'weights': jnp.ones(n)}}
     T = routes.shape[1]
@@ -192,8 +234,12 @@ def mop_from_routes(routes, cells, masks, nan_mask, x_dim, y_dim, box_dim, scale
         week_t_components = jnp.empty((n, cells[t]))
         conversion_dict = get_overall_to_weekly_mask_conversion_dict(nan_mask, masks[t])
         for k in range(n):
-            week_t_components = week_t_components.at[k, :].set(
-                get_weekly_marginal(routes[k][t], t, cells, masks, nan_mask, x_dim, y_dim, box_dim, conversion_dict, scale))
+            if not unboxed:
+                week_t_components = week_t_components.at[k, :].set(
+                    get_boxed_weekly_marginal(routes[k][t], t, cells, masks, nan_mask, x_dim, y_dim, box_dim, conversion_dict, scale))
+            else:
+                week_t_components = week_t_components.at[k, :].set(
+                    get_unboxed_weekly_marginal(routes[k][t], t, cells, masks, nan_mask, x_dim, y_dim, conversion_dict, scale))
         mop_params['MixtureOfProductsModel'][f'week_{t}'] = week_t_components
     return mop_params
 
@@ -216,6 +262,7 @@ parser.add_argument('--ent_weight', help='Weight on the joint entropy of the mod
 parser.add_argument('--dist_pow', help='The exponent of the distance penalty', default=0.4, type=float)
 parser.add_argument("--dont_normalize", action="store_true", help="don't normalize distance matrix")
 parser.add_argument('--rng_seed', help='Random number generator seed', default=17, type=int)
+parser.add_argument("--unboxed", action="store_true", help="use unboxed marginals instead of boxed marginals")
 args = parser.parse_args()
 print(args)
 t1 = time.time()
@@ -254,7 +301,7 @@ print(f"preprocessing: {(time.time()-t1)/60:.4f} min")
 
 t2 = time.time()
 # generate mixture of products parameters from sampled routes
-mop_params = mop_from_routes(routes, cells, masks, nan_mask, x_dim, y_dim, args.box_dim, args.scale)
+mop_params = mop_from_routes(routes, cells, masks, nan_mask, x_dim, y_dim, args.box_dim, args.scale, unboxed=args.unboxed)
 print(f"generating parameters: {(time.time()-t2)/60:.4f} min")
 
 t3 = time.time()
@@ -269,6 +316,6 @@ loss = jit(partial(loss_fn, cells=cells,
 print(f"evaluating loss function: {(time.time()-t3)/60:.4f} min")
 
 # save parameters and loss
-with open(os.path.join(args.save_dir, f'{args.species}_mop_from_routes_params_and_losses_{args.resolution}_obs{args.obs_weight}_ent{args.ent_weight}_dist{args.dist_weight}_pow{args.dist_pow}_radius{args.box_dim}_n{args.num_routes}_scale{args.scale}.pkl'),
+with open(os.path.join(args.save_dir, f'{args.species}_mop_from_routes_params_and_losses_{args.resolution}_obs{args.obs_weight}_ent{args.ent_weight}_dist{args.dist_weight}_pow{args.dist_pow}_radius{args.box_dim}_n{args.num_routes}_scale{args.scale}_unboxed{args.unboxed}.pkl'),
           'wb') as f:
-    pickle.dump({'n': args.num_routes, 'radius': args.box_dim, 'scale': args.scale, 'params': mop_params, 'losses': loss}, f)
+    pickle.dump({'n': args.num_routes, 'unboxed': args.unboxed, 'box_dim': args.box_dim, 'scale': args.scale, 'params': mop_params, 'losses': loss}, f)

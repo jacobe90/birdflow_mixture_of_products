@@ -49,7 +49,7 @@ masks = np.asarray(file['geom']['dynamic_mask']).T.astype(bool)
 dtuple = Datatuple(weeks, total_cells, distance_vector, masks)
 distance_matrices, masked_densities = mask_input(true_densities, dtuple)
 cells = [d.shape[0] for d in masked_densities]
-# distance_matrices, masked_densities = pad_input(distance_matrices, masked_densities, cells)
+#distance_matrices, masked_densities = pad_input(distance_matrices, masked_densities, cells)
 
 # Get the random seed and optimizer
 key = hk.PRNGSequence(args.rng_seed)
@@ -73,7 +73,10 @@ if args.initialize_from_params:
     with open(args.initial_params_path, 'rb') as f:
         params_obj = pickle.load(f)
         initial_params = params_obj["params"]
-        initial_params_metadata = f"_dim{params_obj['radius']}_scale{params_obj['scale']}"
+        if True: #TODO: change this!
+            initial_params_metadata = f"_scale{params_obj['scale']}_unboxed"
+        else:
+            initial_params_metadata = f"_dim{params_obj['box_dim']}_scale{params_obj['scale']}"
 t1 = time.time()
 # Run Training and get params and losses
 params, loss_dict = train_model(loss_fn,

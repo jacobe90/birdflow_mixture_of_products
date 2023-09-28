@@ -169,7 +169,7 @@ class MixtureOfProductsModelTakeThree(hk.Module):
 
 
 def predict(cells, weeks, n, learn_weights=True):
-    model = MixtureOfProductsModelTakeThree(cells, weeks, n, learn_weights=learn_weights)
+    model = MixtureOfProductsModelFast(cells, weeks, n, learn_weights=learn_weights)
     return model()
 
 
@@ -230,7 +230,7 @@ def forecast(params, tsteps, conditions):
     for r in range(n_products):
         likelihood_r = 1
         for (t, obs) in conditions:
-            likelihood_r *= softmax(params[f'MixtureOfProductsModel/Product{r}'][f'week_{t}'])[obs]
+            likelihood_r *= softmax(params[f'MixtureOfProductsModel'][f'week_{t}'][r])[obs]
         pi = pi.at[r].set(weights[r] * likelihood_r)
     pi /= pi.sum()  # normalize the weights
 
@@ -239,7 +239,7 @@ def forecast(params, tsteps, conditions):
     for k in range(n_products):
         prod_k_conditional = jnp.asarray(1)
         for tstep in tsteps:
-            prod_k_conditional = jnp.tensordot(prod_k_conditional, softmax(params[f'MixtureOfProductsModel/Product{k}'][f'week_{tstep}']), axes=0)
+            prod_k_conditional = jnp.tensordot(prod_k_conditional, softmax(params[f'MixtureOfProductsModel'][f'week_{tstep}'][k]), axes=0)
         conditional += pi[k] * prod_k_conditional
 
     return conditional
@@ -247,7 +247,7 @@ def forecast(params, tsteps, conditions):
 """
 Arguments
 params: parameters of a mixture of products model
-observations: a list of tuples (tstep, obs)
+observations: a list of tuples (tstep, obs) to get the probability of given our conditions
 conditions: a list of tuples (tstep, obs) to condition on
 
 Returns
@@ -261,7 +261,7 @@ def get_forecast_prob(params, observations, conditions):
     for r in range(n_products):
         likelihood_r = 1
         for (t, obs) in conditions:
-            likelihood_r *= softmax(params[f'MixtureOfProductsModel/Product{r}'][f'week_{t}'])[obs]
+            likelihood_r *= softmax(params[f'MixtureOfProductsModel'][f'week_{t}'][r])[obs]
         pi = pi.at[r].set(weights[r] * likelihood_r)
     pi /= pi.sum()  # normalize the weights
 
@@ -270,7 +270,7 @@ def get_forecast_prob(params, observations, conditions):
     for k in range(n_products):
         prod_k_conditional_prob = jnp.asarray(1)
         for tstep, cell in observations:
-            prod_k_conditional_prob *= softmax(params[f'MixtureOfProductsModel/Product{k}'][f'week_{tstep}'])[cell]
+            prod_k_conditional_prob *= softmax(params[f'MixtureOfProductsModel'][f'week_{tstep}'][k])[cell]
         conditional_prob += pi[k] * prod_k_conditional_prob
 
     return conditional_prob
@@ -287,7 +287,7 @@ def sample_route(params):
     route = []
     T = len(params['MixtureOfProductsModel/Product0'].keys())
     for t in range(T):
-        route.append(categorical(next(key), params[f'MixtureOfProductsModel/Product{k}'][f'week_{t}']))
+        route.append(categorical(next(key), params[f'MixtureOfProductsModel'][f'week_{t}'][k]))
     return route
 
 """
@@ -306,13 +306,13 @@ def sample_locations_conditional(params, timesteps_to_sample, observations):
     for r in range(n_products):
         likelihood_r = 1
         for (t, obs) in observations:
-            likelihood_r *= softmax(params[f'MixtureOfProductsModel/Product{r}'][f'week_{t}'])[obs]
+            likelihood_r *= softmax(params[f'MixtureOfProductsModel'][f'week_{t}'][r])[obs]
         pi[r] = weights[r] * likelihood_r
     pi /= pi.sum() # normalize the weights
     key = hk.PRNGSequence(np.random.randint(100))
-    k = categorical(next(key), jnp.log(pi))
+    k = categorical(next(key), pi) # check this is correct!
     conditional_sample = []
     for t in timesteps_to_sample:
-        conditional_sample.append(categorical(next(key), params[f'MixtureOfProductsModel/Product{k}'][f'week_{t}']))
+        conditional_sample.append(categorical(next(key), params[f'MixtureOfProductsModel'][f'week_{t}'][k]))
     return conditional_sample
 
