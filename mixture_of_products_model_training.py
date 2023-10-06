@@ -103,7 +103,7 @@ def train_model(loss_fn,
     else:
         params = initial_params
     opt_state = optimizer.init(params)
-
+    
     def update(params, opt_state):
         loss, grads = value_and_grad(loss_fn, has_aux=True)(params)
         updates, new_opt_state = optimizer.update(grads, opt_state)

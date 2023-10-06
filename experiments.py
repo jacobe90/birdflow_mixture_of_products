@@ -95,13 +95,17 @@ def mc_sampled_mop_grid_search(ent_weight, dist_weight, dist_pow, ns, dims, scal
 """
 Train a markov chain with given hyperparameter settings to be used as a baseline for mixture of products training experiments
 """
-def markov_chain_baseline(ent_weight, dist_weight, dist_pow, save_dir=None):
+def markov_chain_baseline(ent_weights, dist_weights, dist_pows, save_dir=None):
     job_file = "/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/birdflow_mixture_of_products/train_markov_chain.sh"
     root_dir = "/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/birdflow_models"
-    os.system(f"sbatch {job_file} -e {ent_weight} -d {dist_weight} -p {dist_pow} -s amewoo -r 48 -o {root_dir} -i {save_dir}")
+    for ew in ent_weights:
+        for dw in dist_weights:
+            for dp in dist_pows:
+                os.system(f"sbatch {job_file} -e {ew} -d {dw} -p {dp} -s amewoo -r 48 -o {root_dir} -i {save_dir}")
 
 if __name__=="__main__":
-    train_with_initial_mc_sampled_components([0], 0.01, 0.4, [1000], [1], [20.0], "/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/varying_entropy_weight_and_fine_tuning")
+    # markov_chain_baseline([1e-3, 2.5e-3, 5e-3, 7.5e-3], [0.01], [0.4], save_dir="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/markov_chain_baselines")
+    train_with_initial_mc_sampled_components([0, 1e-16, 1e-8, 1e-4, 0.001, 0.0025, 0.005, 0.0075, 1e-2, 1, 10], 0.01, 0.4, [1000], [1], [4.0], "/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/varying_entropy_weight_and_fine_tuning")
     # mixture_of_products_grid_search([1e-4], [1e-2], [0.4], [100, 150, 250, 450, 1000], save_dir="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/training_speed_stress_test")
     # mc_sampled_mop_grid_search(0.0001, 0.01, 0.4, [100, 150, 250, 450, 1000], [1], [4, 8, 12, 20, 40], unbox=True, save_dir="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/unboxed_mc_sampled_initial_components")
     #train_with_initial_mc_sampled_components(0.0001, 0.01, 0.4, [100, 150, 250, 450, 1000], [5], [1.5, 3.0, 4.0, 8.0], "/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/initialize_with_mc_sampled_components")
