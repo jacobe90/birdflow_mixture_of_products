@@ -186,9 +186,9 @@ Returns: a vector such that applying softmax yields marginal with zeroes everywh
 def get_boxed_weekly_marginal(box_center, week, cells, masks, nan_mask, x_dim, y_dim, box_dim, conversion_dict, scale):
     box = get_box(box_center, week, masks, nan_mask, x_dim, y_dim, box_dim, conversion_dict)
     marginal = np.empty(cells[week])
-    marginal.fill(-jnp.inf)
+    marginal.fill(-10)
     for idx, coords in box.items():
-        marginal[idx] = math.log(multivariate_normal.pdf(coords, mean=[0, 0], cov=[[scale, 0], [0, scale]]))
+        marginal[idx] = max(math.log(multivariate_normal.pdf(coords, mean=[0, 0], cov=[[scale, 0], [0, scale]])), -10)
     return jnp.array(marginal)
 
 def pdf_spherical_multivariate_normal(x_1, x_2, scale):
@@ -208,14 +208,14 @@ Returns: a weekly marginal of a mixture component where cell probabilites come f
 def get_unboxed_weekly_marginal(center, week, cells, masks, nan_mask, x_dim, y_dim, conversion_dict, scale):
     x_c, y_c = get_coords(center, week, masks, nan_mask, x_dim, y_dim)
     marginal = np.empty(cells[week])
-    marginal.fill(-jnp.inf)
+    marginal.fill(-10)
     mu = np.zeros((2, 1))
     for big_cell in range(len(nan_mask)):
         idx = conversion_dict[big_cell]
         if idx is not None:
             x_big_cell, y_big_cell = cell_to_xy(big_cell, x_dim, y_dim)
             try:
-                marginal[idx] = math.log(pdf_spherical_multivariate_normal(x_big_cell - x_c, y_big_cell - y_c, scale))
+                marginal[idx] = max(math.log(pdf_spherical_multivariate_normal(x_big_cell - x_c, y_big_cell - y_c, scale)), -10)
             except:
                 continue
     return jnp.array(marginal)

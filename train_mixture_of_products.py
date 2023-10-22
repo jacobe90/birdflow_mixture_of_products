@@ -66,18 +66,21 @@ loss_fn = jit(partial(loss_fn,
                       num_products=args.num_components,
                       learn_weights=not args.fix_weights))
 
-# get initial params if applicable
+# get initial params if applicable; deal with associated metadata (scale, dim, unboxed/boxed at the moment)
 initial_params = None
-initial_params_metadata = ""
+initial_params_metadata_str = ""
+metadata_obj = vars(args)
 if args.initialize_from_params:
     with open(args.initial_params_path, 'rb') as f:
         params_obj = pickle.load(f)
         initial_params = params_obj["params"]
-        if True: #TODO: change this!
+        if params_obj['unboxed']:
             initial_params_metadata = f"_scale{params_obj['scale']}_unboxed"
         else:
             initial_params_metadata = f"_dim{params_obj['box_dim']}_scale{params_obj['scale']}"
+        metadata_obj.update({k: params_obj[k] for k in ('box_dim', 'scale', 'unboxed')})
 t1 = time.time()
+
 # Run Training and get params and losses
 params, loss_dict = train_model(loss_fn,
                                 optimizer,
@@ -91,10 +94,13 @@ params, loss_dict = train_model(loss_fn,
 print(f"training took {((time.time() - t1) / 60):.4f} minutes")
 
 # save everything to a file in save_dir
-metadata = f'{args.species}_{args.resolution}km_obs{args.obs_weight}_ent{args.ent_weight}_dist{args.dist_weight}_pow{args.dist_pow}_n{args.num_components}_key{args.rng_seed}' + initial_params_metadata
+metadata_str = f'{args.species}_{args.resolution}km_obs{args.obs_weight}_ent{args.ent_weight}_dist{args.dist_weight}_pow{args.dist_pow}_n{args.num_components}_key{args.rng_seed}' + initial_params_metadata_str
+
 if args.fix_weights:
-    metadata += "_fixed_weights"
-with open(os.path.join(args.save_dir, f'mop_params_{metadata}.pkl'), 'wb') as fout:
+    metadata_str += "_fixed_weights"
+with open(os.path.join(args.save_dir, f'mop_params_{metadata_str}.pkl'), 'wb') as fout:
+    params['metadata'] = metadata_obj
     pickle.dump(params, fout)
-with open(os.path.join(args.save_dir, f'mop_losses_{metadata}.pkl'), 'wb') as fout:
+with open(os.path.join(args.save_dir, f'mop_losses_{metadata_str}.pkl'), 'wb') as fout:
+    loss_dict['metadata'] = metadata_obj
     pickle.dump(loss_dict, fout)
