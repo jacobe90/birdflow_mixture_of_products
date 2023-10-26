@@ -14,6 +14,8 @@ import h5py
 import pandas as pd
 import math
 from functools import partial
+from mixture_of_products_gaussian import MixtureOfProducts
+import jax
 
 def convert_toy_to_real(params):
     real_params = {}
@@ -22,6 +24,37 @@ def convert_toy_to_real(params):
         real_params['MixtureOfProductsModel'][f'week_{t}'] = jnp.asarray([params['products'][k][t] for k in range(params['n'])])
     return real_params
 
+def get_single_tstep_marginal_gaussian(t, coords, scales, centers, weights):
+    marginal = 0
+    for k in range(len(weights)):
+        probs = (1/(2*math.pi*scales[t][k]))*jnp.exp(-(0.5/scales[t][k])*(jnp.linalg.norm(coords[t] - centers[t][k], axis=1)**2))
+        probs = jnp.where(probs > math.e ** (-10), probs, math.e ** (-10))
+        marginal += jax.nn.softmax(weights)[k] * (probs / probs.sum())
+    return marginal
+
+def get_pairwise_marginal_gaussian(t, coords, scales, centers, weights):
+    marginal = 0
+    for k in range(len(weights)):
+        probs_0 = (1/(2*math.pi*scales[t][k]))*jnp.exp(-(0.5/scales[t][k])*(jnp.linalg.norm(coords[t] - centers[t][k], axis=1)**2))
+        probs_0 = jnp.where(probs_0 > math.e ** (-10), probs_0, math.e ** (-10))
+        probs_0 /= probs_0.sum()
+        probs_1 = (1 / (2 * math.pi * scales[t+1][k])) * jnp.exp(
+            -(0.5 / scales[t+1][k]) * (jnp.linalg.norm(coords[t+1] - centers[t+1][k], axis=1) ** 2))
+        probs_1 = jnp.where(probs_1 > math.e ** (-10), probs_1, math.e ** (-10))
+        probs_1 /= probs_1.sum()
+        marginal += jax.nn.softmax(weights)[k] * np.outer(probs_0, probs_1)
+    return marginal
+class TestEquinoxMopGaussianParameterization(unittest.TestCase):
+    def test_single_timestep_marginals(self):
+        coords = jnp.array([[[1, 1], [1, 0], [1, 2]], [[1, 1], [1, 0], [1, 2]], [[1, 1], [1, 0], [1, 2]], [[1, 1], [1, 0], [1, 2]]])
+        key = jax.random.PRNGKey(42)
+        model = MixtureOfProducts(key, n=4, T=4, coords=coords, scales=jnp.ones((4, 4)), centers=jnp.ones((4, 4, 2)))
+        single, pairwise = model()
+        for t in range(4):
+            assert(jnp.allclose(single[t], get_single_tstep_marginal_gaussian(t, coords, model.scales, model.centers, model.weights)))
+        for t in range(3):
+            assert (jnp.allclose(pairwise[t], get_pairwise_marginal_gaussian(t, coords, model.scales, model.centers,
+                                                                               model.weights)))
 class TestValidation(unittest.TestCase):
     def test_track_log_likelihood_runs(self):
         hdf_src = "/Users/jacobepstein/Documents/work/BirdFlowModels/amewoo_2021_48km.hdf5"
