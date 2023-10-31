@@ -6,13 +6,13 @@ from mixture_of_products_gaussian import MixtureOfProducts
 Functions for generating coordinate conversion array
 coords is an array of length T, coords[t][i] = coordinates of weekly mask t cell i in the overall grid
 """
-def generate_coords_array(masks, nan_mask, x_dim, y_dim):
+def generate_coords_array(cells, masks, nan_mask, x_dim, y_dim):
     coords = []
-    for t in range(len(masks)):
+    for t in range(len(cells)):
         coords.append([])
-        for i in range(len(masks[t])):
-            coords[t].append(
-                cell_to_xy(get_index_in_bigger_grid(get_index_in_bigger_grid(i, masks[t]), nan_mask), x_dim, y_dim))
+        for i in range(cells[t]):
+            cell = get_index_in_bigger_grid(get_index_in_bigger_grid(i, masks[t]), nan_mask)
+            coords[t].append(cell_to_xy(cell, x_dim, y_dim))
     return coords
 
 def get_index_in_bigger_grid(cell, mask):
@@ -83,9 +83,10 @@ def train_model(loss_fn,
                 coords,
                 scales,
                 centers,
+                weights,
                 key):
 
-    model = MixtureOfProducts(key, n, T, coords, scales, centers)
+    model = MixtureOfProducts(key, n, T, coords, scales, centers, weights)
     # initialize optimizer state, make sure we don't compute gradients of coords! (could this cause a problem?)
     opt_state = optimizer.init(eqx.filter(model, eqx.is_array))
 

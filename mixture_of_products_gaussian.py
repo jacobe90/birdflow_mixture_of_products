@@ -29,10 +29,10 @@ class MixtureOfProducts(eqx.Module):
     T: int
     coords: list  # we don't want to compute gradients w.r.t these parameters!
 
-    def __init__(self, key, n, T, coords, scales, centers):
+    def __init__(self, key, n, T, coords, scales, centers, weights):
         self.scales = scales
         self.centers = centers + 1e-4  # avoid nans in the gradient (which happened when grid cell centers were integer coordinates and could have distance 0 from grid cells)
-        self.weights = jax.random.normal(key, (n,))
+        self.weights = weights
         self.n = n  # number of components
         self.T = T  # number of timesteps
         self.coords = coords

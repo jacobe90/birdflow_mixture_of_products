@@ -101,9 +101,32 @@ def markov_chain_baseline(ent_weights, dist_weights, dist_pows, save_dir=None):
             for dp in dist_pows:
                 os.system(f"sbatch {job_file} -e {ew} -d {dw} -p {dp} -s amewoo -r 48 -o {root_dir} -i {save_dir}")
 
+                
+def generate_initial_gaussian_params(scales, ews, dws, dps, ns, out_dir):
+    job_file = "/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/birdflow_mixture_of_products/generate_gaussian_initial_params.sh"
+    for ew in ews:
+        for scale in scales:
+            for dw in dws:
+                for dp in dps:
+                    for n in ns:
+                        os.system(f"sbatch {job_file} -e {ew} -d {dw} -p {dp} -s {scale} -o {out_dir} -n {n}")
+
+def train_mixture_of_products_gaussian_parametrization(ews, dws, dps, ns, scales, out_dir):
+    initial_params_dir = "/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/mop_gaussian_initial_params"
+    job_file = "/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/birdflow_mixture_of_products/train_mop_gaussian.sh"
+    for ew in ews:
+        for dw in dws:
+            for dp in dps:
+                for n in ns:
+                    for scale in scales:
+                        initial_params_path = os.path.join(initial_params_dir, f"mop_gaussian_initial_params_ew{ew}_dw{dw}_dp{dp}_n{n}_scale{scale}.pkl")
+                        os.system(f"sbatch {job_file} -e {ew} -d {dw} -p {dp} -o {out_dir} -n {n} -i {initial_params_path}")
+
 if __name__=="__main__":
+    # train_mixture_of_products_gaussian_parametrization([1e-4], [1e-2], [0.4], [1000], [2.0], "/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/mop_gaussian_parameterization_initial_test")
+    generate_initial_gaussian_params(scales=[2], dws=[1e-2], ews=[1e-4], dps=[0.4], ns=[150, 250, 500, ], out_dir="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/mop_gaussian_initial_params")
     # markov_chain_baseline([1e-3, 2.5e-3, 5e-3, 7.5e-3], [0.01], [0.4], save_dir="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/markov_chain_baselines")
-    train_with_initial_mc_sampled_components([0.0025], [0.01], [0.4], 1000, save_dir="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/test", initial_params_path="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/initial_components/amewoo_mop_from_routes_params_and_losses_48_obs1.0_ent0.0001_dist0.01_pow0.4_radius5_n1000_scale3.0_unboxedFalse.pkl")
+    # train_with_initial_mc_sampled_components([0.0025], [0.01], [0.4], 1000, save_dir="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/test", initial_params_path="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/initial_components/amewoo_mop_from_routes_params_and_losses_48_obs1.0_ent0.0001_dist0.01_pow0.4_radius5_n1000_scale3.0_unboxedFalse.pkl")
     # mixture_of_products_grid_search([1e-4], [1e-2], [0.4], [100, 150, 250, 450, 1000], save_dir="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/training_speed_stress_test")
     #mc_sampled_mop_grid_search(0.0001, 0.01, 0.4, [1000], [1], [1, 2, 4, 8, 12, 20, 40], unbox=True)
     #mc_sampled_mop_grid_search(0.0001, 0.01, 0.4, [1000], [5], [3], unbox=False)
