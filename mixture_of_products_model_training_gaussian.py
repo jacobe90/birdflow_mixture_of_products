@@ -114,4 +114,4 @@ def train_model(loss_fn,
         loss_dict['dist'].append(float(dist))
         loss_dict['ent'].append(float(ent))
 
-    return eqx.tree_at(lambda t: t.coords, model, None), loss_dict
+    return model, loss_dict
