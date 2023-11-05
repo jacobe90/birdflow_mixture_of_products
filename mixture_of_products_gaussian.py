@@ -9,7 +9,7 @@ import math
 def get_marginals_of_components_for_week(center, scale, coords):
     # compute densities from the MVN pdf
     d = jnp.linalg.norm(coords - center, axis=1) ** 2
-    probs = (1 / (2 * math.pi * scale)) * jnp.exp(-(0.5 / scale) * d)
+    probs = (1 / (2 * math.pi * (scale**2))) * jnp.exp(-(0.5 / scale**2) * d)
 
     # set densities that are below threshold to the threshold value
     probs = jnp.where(probs > math.e ** (-10), probs, math.e ** (-10))
