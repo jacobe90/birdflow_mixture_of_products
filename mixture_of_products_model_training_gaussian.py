@@ -1,6 +1,7 @@
 import jax.numpy as jnp
 import equinox as eqx
 from mixture_of_products_gaussian import MixtureOfProducts
+import pickle as pkl
 
 """
 Functions for generating coordinate conversion array
@@ -104,14 +105,25 @@ def train_model(loss_fn,
         'dist': [],
         'ent': [],
     }
-
+    
+    params_t47_k35 = []
+    params_t47_k536 = []
+    params_t47_k574 = []
     for step in range(training_steps):
         model, opt_state, loss = update(model, opt_state)
         total_loss, loss_components = loss
+        params_t47_k574.append((model.scales[47][574], model.centers[47][574]))
+        params_t47_k35.append((model.scales[47][35], model.centers[47][35]))
+        params_t47_k536.append((model.scales[47][536], model.centers[47][536]))
+        # if step==20 or step==100 or step==150:
+        #     with open(f"/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/mop_gaussian_deep_dive/params_save_step{step}_n{n}.pkl", 'wb') as f:
+        #         pkl.dump({"params": model, "loss": total_loss}, f)
+        
         obs, dist, ent = loss_components
         loss_dict['total'].append(float(total_loss))
         loss_dict['obs'].append(float(obs))
         loss_dict['dist'].append(float(dist))
         loss_dict['ent'].append(float(ent))
-
+    with open(f"/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/mop_gaussian_deep_dive/nan_tracker.pkl", 'wb') as f:
+            pkl.dump({574: params_t47_k574, 35: params_t47_k35, 536: params_t47_k536}, f)
     return model, loss_dict

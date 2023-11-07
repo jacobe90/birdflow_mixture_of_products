@@ -59,7 +59,7 @@ for k in range(args.n):
     centers = centers.at[:, k, :].set(centers_k)
 
 # assemble initial params object
-initial_params = {"centers": centers, "scales": math.sqrt(args.scale)*jnp.ones((args.T, args.n)), "weights": jnp.ones((args.n,))}
+initial_params = {"centers": centers, "scales": args.scale*jnp.ones((args.T, args.n)), "weights": jnp.ones((args.n,))}
 
 # save to file
 fname = f"mop_gaussian_initial_params_ew{args.ew}_dw{args.dw}_dp{args.dp}_n{args.n}_scale{args.scale}.pkl"

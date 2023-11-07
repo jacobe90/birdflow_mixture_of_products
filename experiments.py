@@ -123,8 +123,8 @@ def train_mixture_of_products_gaussian_parametrization(ews, dws, dps, ns, scales
                         os.system(f"sbatch {job_file} -e {ew} -d {dw} -p {dp} -o {out_dir} -n {n} -i {initial_params_path}")
 
 if __name__=="__main__":
-    train_mixture_of_products_gaussian_parametrization([1e-4], [1e-2], [0.4], [150, 250, 500, 1000], [2.0], "/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/mop_gaussian_parameterization_initial_test")
-    # generate_initial_gaussian_params(scales=[2], dws=[1e-2], ews=[1e-4], dps=[0.4], ns=[150, 250, 500, ], out_dir="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/mop_gaussian_initial_params")
+    train_mixture_of_products_gaussian_parametrization([1e-4], [1e-2], [0.4], [1000], [2.0], "/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/mop_gaussian_deep_dive")
+    # generate_initial_gaussian_params(scales=[2.0], dws=[1e-2], ews=[1e-4], dps=[0.4], ns=[1], out_dir="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/mop_gaussian_initial_params")
     # markov_chain_baseline([1e-3, 2.5e-3, 5e-3, 7.5e-3], [0.01], [0.4], save_dir="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/markov_chain_baselines")
     # train_with_initial_mc_sampled_components([0.0025], [0.01], [0.4], 1000, save_dir="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/test", initial_params_path="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/initial_components/amewoo_mop_from_routes_params_and_losses_48_obs1.0_ent0.0001_dist0.01_pow0.4_radius5_n1000_scale3.0_unboxedFalse.pkl")
     # mixture_of_products_grid_search([1e-4], [1e-2], [0.4], [100, 150, 250, 450, 1000], save_dir="/work/pi_drsheldon_umass_edu/birdflow_modeling/jacob_independent_study/mixture_of_products/experiments/training_speed_stress_test")
